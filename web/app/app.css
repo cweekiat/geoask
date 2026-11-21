@@ -272,3 +272,22 @@ body:not(.panel-collapsed) .fab { display: none !important; }
   .spinner { animation: none; border-top-color: var(--accent); }
 }
 .stat.fm .v { color: var(--accent); }
+
+/* ---------- area selection ---------- */
+.selection { display: flex; align-items: center; gap: 8px; margin: 0 2px 8px; padding: 4px 4px 4px 10px;
+  border: 1px solid rgba(90, 169, 255, .45); background: var(--accent-soft); border-radius: 999px;
+  font-size: 13px; color: var(--ink); width: fit-content; max-width: 100%; }
+.selection[hidden] { display: none; }
+.selection .sel-x { width: 28px; height: 28px; }
+@media (pointer: coarse) { .selection .sel-x { width: 44px; height: 44px; } }
+.draw-hint { position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); top: calc(16px + var(--safe-t));
+  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 999px; font-size: 14px; }
+.draw-hint[hidden] { display: none; }
+body.drawing #map canvas { cursor: crosshair; }
+@media (max-width: 760px) { .draw-hint { top: auto; bottom: calc(12px + min(56vh, 520px) + 70px); flex-wrap: wrap; justify-content: center; border-radius: 18px; } }
+
+/* ---------- written answer ---------- */
+.answer { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: var(--r-md); padding: 12px 14px; }
+.answer p { margin: 0 0 6px; font-size: 15px; line-height: 1.5; }
+.answer .src { color: var(--ink-3); font-size: 12px; display: flex; gap: 6px; align-items: center; }

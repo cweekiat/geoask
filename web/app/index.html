@@ -37,6 +37,11 @@
   </div>
   <div id="log" class="log" role="log" aria-live="polite" aria-relevant="additions"></div>
   <div class="composer">
+    <div class="selection" id="selection" hidden>
+      <svg class="icon sm" data-icon="select" aria-hidden="true"></svg>
+      <span id="sel-text">Selected area</span>
+      <button class="btn-icon sel-x" id="sel-clear" type="button" aria-label="Clear the selected area"><svg class="icon sm" data-icon="x"></svg></button>
+    </div>
     <form id="ask-form">
       <label for="ask" class="sr-only">Ask a question about a place</label>
       <textarea id="ask" rows="1" placeholder="Ask how a place has changed"></textarea>
@@ -50,6 +55,7 @@
 <!-- Right rail: map controls -->
 <nav class="rail glass" aria-label="Map controls">
   <button class="btn-icon" id="btn-layers" title="Layers" aria-label="Layers" aria-haspopup="dialog" aria-expanded="false"><svg class="icon" data-icon="layers"></svg></button>
+  <button class="btn-icon" id="btn-draw" title="Draw an area to ask about" aria-label="Draw an area to ask about" aria-pressed="false"><svg class="icon" data-icon="select"></svg></button>
   <button class="btn-icon" id="btn-globe" title="3D globe and terrain" aria-label="3D globe and terrain" aria-pressed="false"><svg class="icon" data-icon="globe"></svg></button>
   <hr>
   <button class="btn-icon" id="btn-zin" title="Zoom in" aria-label="Zoom in"><svg class="icon" data-icon="plus"></svg></button>
@@ -83,6 +89,11 @@
 
 <div class="hud" id="hud" aria-hidden="true">1.3521° N  103.8198° E</div>
 <div class="toast glass-regular" id="toast" role="status" hidden></div>
+<div class="draw-hint glass-regular" id="draw-hint" hidden>
+  <span>Drag on the map to draw an area.</span>
+  <button class="btn" id="draw-view" type="button">Use Visible Map Area</button>
+  <button class="btn" id="draw-cancel" type="button">Cancel</button>
+</div>
 
 <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
 <script src="app.js"></script>

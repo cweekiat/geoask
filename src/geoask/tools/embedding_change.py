@@ -75,11 +75,13 @@ def otsu_threshold(d: np.ndarray, bins: int = 256) -> float:
 def embedding_change(
     place: str, t0: str, t1: str, out_root: Path, model: str = "clay-v1.5",
     sensor: str = "sentinel-2-l2a", max_cloud: float = 60, min_clear: float = 0.5,
-    progress: Progress = lambda _m: None,
+    progress: Progress = lambda _m: None, bbox: aoi.BBox | None = None,
 ) -> dict:
     started = time.time()
     prof = load_profile(sensor)
-    pl = aoi.resolve(place)
+    pl = aoi.place_for(place, bbox)
+    where = "the selected area" if pl.source == "drawn" else pl.name.title()
+    aoi.check_size(pl, "embedding_change")
     grid = grid_for(pl.bbox, prof.gsd_m)
     enc = get(model)
     progress(f"Loading {enc.spec.family} on this device")
@@ -89,12 +91,12 @@ def embedding_change(
     embs, stacks, picks = [], [], []
     for label, win in (("before", t0), ("after", t1)):
         a, b = win.split("/")
-        progress(f"Finding the clearest {label} date over {pl.name.title()}, {a} to {b}")
+        progress(f"Finding the clearest {label} date over {where}, {a} to {b}")
         cand = best_date(find_scenes(prof, pl.bbox, a, b, max_cloud=max_cloud), pl.bbox,
                          min_clear=min_clear)
         if cand is None:
             raise NoClearDate(f"No date between {a} and {b} had at least {min_clear:.0%} of "
-                              f"{pl.name.title()} clear of cloud.")
+                              f"{where} clear of cloud.")
         progress(f"Reading {len(keys)} bands for {cand.date}")
         st = load_stack(cand.scenes, keys + vis, grid)
         progress(f"Embedding {cand.date} with {enc.spec.id}")
@@ -122,7 +124,7 @@ def embedding_change(
     result = {
         "id": rid, "tool": "embedding_change", "model": f"{enc.spec.id}@{enc.version}",
         "label": "any change", "index": enc.spec.family.lower(),
-        "place": pl.name, "place_bbox": pl.bbox, "place_bbox_approximate": pl.approximate,
+        "place": pl.name, "place_bbox": pl.bbox, "place_bbox_approximate": pl.approximate, "place_source": pl.source,
         "date0": picks[0]["date"], "date1": picks[1]["date"], "sensor": prof.id,
         "changed_ha": round(float(changed.sum() * px_ha), 2),
         "threshold": round(thr, 4), "threshold_method": "Otsu on patch cosine distances",

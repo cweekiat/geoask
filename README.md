@@ -12,7 +12,7 @@ HTTPS range requests). It looks bands up **by wavelength, not by name**, so the 
 any sensor with the right bands. The language model only chooses which tools to run; every number
 comes from deterministic code on native-resolution pixels.
 
-Status: **v0.3: Clay v1.5 integrated.** See [docs/PLAN.md](docs/PLAN.md) for the full plan and
+Status: **v0.4: free-form questions about any place or a drawn area.** See [docs/PLAN.md](docs/PLAN.md) for the full plan and
 [docs/DESIGN.md](docs/DESIGN.md) for the app's design and HIG review.
 
 **[Try the Investigator demo →](https://cweekiat.github.io/geoask/app/)** It runs in Demo mode on
@@ -31,8 +31,21 @@ Run the **Investigator app** (a Google Maps/Earth-style map with an Ask panel) o
 
 ```bash
 uv pip install -e ".[serve]"
+ollama pull qwen2.5:7b  # optional: lets it understand free-form questions (free, local)
 geoask serve            # → http://127.0.0.1:8787/app/
 ```
+
+Ask in your own words, about any of 660 named places in Singapore (from OpenStreetMap) or an area
+you **draw on the map**, e.g. *"What is being built here?"*, *"Has the forest near Tengah shrunk over
+the last few years?"*, *"Did they build anything new at Changi Airport since 2018?"*
+
+- **Qwen 2.5 7B (via Ollama)** reads the question and chooses a tool with simple arguments (topic,
+  place, years). Python checks them and turns them into date windows. Years count only if you gave
+  them; open questions always use the Clay "any change" tool.
+- **Numbers can't be invented:** the model writes the answer from a list of measured facts, and
+  every number in its text is checked against those facts. If any number isn't found, a fixed-wording
+  answer is shown instead, and the app says so.
+- Without Ollama, a rule-based planner takes over automatically.
 
 **Clay foundation model** (optional, about 0.6 GB on disk): ask open questions like *"What changed in
 Tengah since 2019?"* and Clay v1.5 looks for change of any kind, patch by patch:

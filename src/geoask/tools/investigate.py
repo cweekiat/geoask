@@ -28,24 +28,27 @@ class NoClearDate(RuntimeError):
 def index_change(
     place: str, index: str, t0: str, t1: str, out_root: Path, sensor: str = "sentinel-2-l2a",
     max_cloud: float = 60, min_clear: float = 0.5, progress: Progress = lambda _m: None,
+    bbox: aoi.BBox | None = None,
 ) -> dict:
     """Change in a spectral index between the clearest dates of two windows ("start/end")."""
     started = time.time()
     prof = load_profile(sensor)
-    pl = aoi.resolve(place)
+    pl = aoi.place_for(place, bbox)
+    where = "the selected area" if pl.source == "drawn" else pl.name.title()
+    aoi.check_size(pl, "index_change")
     grid = grid_for(pl.bbox, prof.gsd_m)
     targets = list(dict.fromkeys(spectral.targets_for(index) + ["red", "green", "blue"]))
     stacks, picks = [], []
     for label, win in (("before", t0), ("after", t1)):
         a, b = win.split("/")
-        progress(f"Searching {prof.platform} scenes over {pl.name.title()}, {a} to {b}")
+        progress(f"Searching {prof.platform} scenes over {where}, {a} to {b}")
         scenes = find_scenes(prof, pl.bbox, a, b, max_cloud=max_cloud)
         progress(f"Ranking {len(scenes)} {label} scenes by clear pixels inside "
-                 f"{pl.name.title()}, then re-checking the best for haze")
+                 f"{where}, then re-checking the best for haze")
         cand = best_date(scenes, pl.bbox, min_clear=min_clear)
         if cand is None:
             raise NoClearDate(f"No date between {a} and {b} had at least {min_clear:.0%} of "
-                              f"{pl.name.title()} clear of cloud.")
+                              f"{where} clear of cloud.")
         haze = cand.haze_fraction
         picks.append({"date": cand.date, "clear": round(cand.clear_fraction, 3),
                       "haze": None if haze is None else round(haze, 3),
@@ -69,7 +72,7 @@ def index_change(
         "label": INDEX_LABEL.get(index, index),
         "place": pl.name,
         "place_bbox": pl.bbox,
-        "place_bbox_approximate": pl.approximate,
+        "place_bbox_approximate": pl.approximate, "place_source": pl.source,
         "corners": grid.corners_lonlat(),
         "grid": {"crs": grid.crs, "res_m": grid.res, "shape": list(grid.shape)},
         "picks": picks,

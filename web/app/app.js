@@ -28,6 +28,9 @@
     thumbup: '<path d="M7 11v9H4v-9h3Zm0 0 4-7a2 2 0 0 1 2 2v4h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7"/>',
     thumbdown: '<path d="M7 13V4H4v9h3Zm0 0 4 7a2 2 0 0 0 2-2v-4h5a2 2 0 0 0 2-2.3l-1.2-6A2 2 0 0 0 16.8 4H7"/>',
     retry: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>',
+    select: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M10 4h4M10 20h4M4 10v4M20 10v4"/>',
+    x: '<path d="M6 6l12 12M18 6 6 18"/>',
+    sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5"/>',
   };
   const icon = (n, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
   document.querySelectorAll('svg[data-icon]').forEach(el => {
@@ -53,7 +56,7 @@
     'How much new built-up land is there in Punggol since 2019?',
   ];
   const DEMO_BASE = '../gallery/tengah/';
-  let live = false, places = FALLBACK_PLACES, active = null, busy = false;
+  let live = false, places = FALLBACK_PLACES, active = null, busy = false, selection = null;
 
   // ---------- map ----------
   const eox = y => `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-${y}_3857/default/g/{z}/{y}/{x}.jpg`;
@@ -94,7 +97,10 @@
     map.addLayer({ id: 'areas-label', type: 'symbol', source: 'areas', minzoom: 10.5,
       layout: { 'text-field': ['get', 'title'], 'text-size': 12, 'text-font': ['Noto Sans Regular'], 'text-anchor': 'top-left', 'text-offset': [0.4, 0.4] },
       paint: { 'text-color': '#cfe3ff', 'text-halo-color': '#070b12', 'text-halo-width': 1.4 } });
-    map.on('click', 'areas-fill', e => focusPlace(e.features[0].properties.name));
+    map.addSource('sel', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: 'sel-fill', type: 'fill', source: 'sel', paint: { 'fill-color': '#5aa9ff', 'fill-opacity': 0.12 } });
+    map.addLayer({ id: 'sel-line', type: 'line', source: 'sel', paint: { 'line-color': '#8cc2ff', 'line-width': 2 } });
+    map.on('click', 'areas-fill', e => { if (!drawing) focusPlace(e.features[0].properties.name); });
     map.on('mouseenter', 'areas-fill', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'areas-fill', () => map.getCanvas().style.cursor = '');
 
@@ -132,6 +138,54 @@
     return narrow ? { top: 80, bottom: collapsed ? 140 : innerHeight * 0.58 + 40, left: 30, right: 70 }
       : { top: 80, bottom: 110, left: collapsed ? 60 : 470, right: 80 };
   };
+
+  // ---------- draw an area ----------
+  let drawing = false, drawStart = null;
+  const boxFeature = b => ({ type: 'FeatureCollection', features: b ? [{ type: 'Feature', properties: {},
+    geometry: { type: 'Polygon', coordinates: [[[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[0], b[1]]]] } }] : [] });
+  const bboxKm2 = ([w, s, e, n]) => (e - w) * 111.32 * Math.cos((s + n) / 2 * Math.PI / 180) * (n - s) * 110.57;
+  function setDrawing(on) {
+    drawing = on; document.body.classList.toggle('drawing', on);
+    $('#btn-draw').setAttribute('aria-pressed', on); $('#draw-hint').hidden = !on;
+    on ? map.dragPan.disable() : map.dragPan.enable();
+    if (on) $('#draw-view').focus();
+  }
+  function setSelection(b) {
+    selection = b ? b.map(v => +v.toFixed(5)) : null;
+    map.getSource('sel')?.setData(boxFeature(selection));
+    const chip = $('#selection');
+    chip.hidden = !selection;
+    if (selection) {
+      $('#sel-text').textContent = `Selected area · ${bboxKm2(selection).toFixed(1)} km²`;
+      if (!askBox.value.trim()) { askBox.value = 'What is being built here?'; askBox.dispatchEvent(new Event('input')); }
+      askBox.focus();
+    }
+  }
+  $('#btn-draw').onclick = () => setDrawing(!drawing);
+  $('#draw-cancel').onclick = () => setDrawing(false);
+  $('#draw-view').onclick = () => {  // keyboard/touch alternative to dragging
+    const b = map.getBounds();
+    const w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
+    const cx = (w + e) / 2, cy = (s + n) / 2, hw = (e - w) * 0.3, hh = (n - s) * 0.3;
+    setSelection([cx - hw, cy - hh, cx + hw, cy + hh]); setDrawing(false);
+  };
+  $('#sel-clear').onclick = () => setSelection(null);
+  map.on('mousedown', e => { if (!drawing) return; drawStart = e.lngLat; e.preventDefault(); });
+  map.on('touchstart', e => { if (!drawing || e.points.length !== 1) return; drawStart = e.lngLat; e.preventDefault(); });
+  const dragTo = e => {
+    if (!drawing || !drawStart) return;
+    const b = [Math.min(drawStart.lng, e.lngLat.lng), Math.min(drawStart.lat, e.lngLat.lat), Math.max(drawStart.lng, e.lngLat.lng), Math.max(drawStart.lat, e.lngLat.lat)];
+    map.getSource('sel').setData(boxFeature(b));
+    return b;
+  };
+  map.on('mousemove', dragTo); map.on('touchmove', dragTo);
+  const finish = e => {
+    if (!drawing || !drawStart) return;
+    const b = dragTo(e); drawStart = null;
+    if (b && bboxKm2(b) > 0.05) { setSelection(b); setDrawing(false); }
+    else map.getSource('sel').setData(boxFeature(selection));
+  };
+  map.on('mouseup', finish); map.on('touchend', finish);
 
   // ---------- layers popover ----------
   const lp = $('#layers'), lb = $('#btn-layers');
@@ -181,11 +235,22 @@
   // ---------- search ----------
   const q = $('#q'), results = $('#results'), search = $('#search');
   let sel = -1, items = [];
-  function renderResults() {
+  let found = {}, searchSeq = 0;
+  async function renderResults() {
     const term = q.value.trim().toLowerCase();
-    items = Object.keys(places).filter(n => !term || n.includes(term)).slice(0, 8);
-    results.innerHTML = items.map((n, i) => `<li role="option" id="opt-${i}" aria-selected="${i === sel}" data-name="${esc(n)}">${icon('pin', 'icon sm')}<span>${esc(titleCase(n))}</span><span class="meta">${approxKm2(places[n])} km²</span></li>`).join('')
-      || `<li role="option" aria-disabled="true">No match. Try Tengah, Tuas or Punggol.</li>`;
+    if (live) {
+      const my = ++searchSeq;
+      try {
+        const rs = await (await fetch('/api/search?q=' + encodeURIComponent(term))).json();
+        if (my !== searchSeq) return;
+        found = Object.fromEntries(rs.map(r => [r.name, r.bbox]));
+      } catch { found = {}; }
+    } else {
+      found = Object.fromEntries(Object.entries(places).filter(([n]) => !term || n.includes(term)).slice(0, 8));
+    }
+    items = Object.keys(found);
+    results.innerHTML = items.map((n, i) => `<li role="option" id="opt-${i}" aria-selected="${i === sel}" data-name="${esc(n)}">${icon('pin', 'icon sm')}<span>${esc(titleCase(n))}</span><span class="meta">${approxKm2(found[n])} km²</span></li>`).join('')
+      || `<li role="option" aria-disabled="true">No match. Try another name, or draw an area.</li>`;
     results.hidden = false; search.setAttribute('aria-expanded', 'true');
     q.setAttribute('aria-activedescendant', sel >= 0 ? `opt-${sel}` : '');
   }
@@ -203,7 +268,7 @@
   q.addEventListener('blur', () => setTimeout(closeResults, 120));
 
   function focusPlace(name) {
-    const [w, s, e, n] = places[name];
+    const [w, s, e, n] = found[name] || places[name];
     q.value = titleCase(name);
     map.fitBounds([[w, s], [e, n]], { padding: pad(), duration: reduceMotion ? 0 : 1100, maxZoom: 15 });
     const ask = $('#ask');
@@ -243,10 +308,11 @@
   async function ask(question) {
     busy = true; send.disabled = true;
     log.querySelector('.empty')?.remove();
-    log.insertAdjacentHTML('beforeend', `<div class="msg-user">${esc(question)}</div>`);
+    const box = selection;
+    log.insertAdjacentHTML('beforeend', `<div class="msg-user">${esc(question)}${box ? `<br><small>${icon('select', 'icon sm')} selected area</small>` : ''}</div>`);
     askBox.value = ''; askBox.dispatchEvent(new Event('input'));
     const bot = document.createElement('div'); bot.className = 'msg-bot'; log.appendChild(bot);
-    const ctx = { bot, steps: null, question };
+    const ctx = { bot, steps: null, question, box };
     try {
       if (live) await askLive(question, ctx); else await askDemo(question, ctx);
     } catch (err) {
@@ -258,7 +324,7 @@
   }
 
   async function askLive(question, ctx) {
-    const res = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question }) });
+    const res = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, bbox: ctx.box }) });
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
     const reader = res.body.getReader(), dec = new TextDecoder();
     let buf = '';
@@ -274,20 +340,23 @@
   function handle(ev, ctx) {
     if (ev.type === 'plan') {
       showPlan(ctx, ev);
-      const b = places[ev.args?.place];
+      const b = ev.args?.bbox || places[ev.args?.place];
       if (b) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), duration: reduceMotion ? 0 : 1100, maxZoom: 15 });
     }
     else if (ev.type === 'step') addStep(ctx, ev.text);
     else if (ev.type === 'result') showResult(ctx, ev.result, ev.result.base);
     else if (ev.type === 'clarify') showClarify(ctx, ev.message, ev.suggestions);
+    else if (ev.type === 'reply') showClarify(ctx, ev.message, ev.suggestions);
+    else if (ev.type === 'answer') showAnswer(ctx, ev.text, ev.source);
     else if (ev.type === 'error') showError(ctx, ev.message, ev.hint);
     log.scrollTop = log.scrollHeight;
   }
 
   function showPlan(ctx, p) {
     const args = Object.entries(p.args).map(([k, v]) => `${k}=<b>${esc(v)}</b>`).join(', ');
-    ctx.bot.insertAdjacentHTML('beforeend', `<p>${esc(p.explanation)}</p><div class="plan" aria-label="Analysis plan">${esc(p.tool)}(${args})<br><span>planned by ${esc(p.planner)}</span></div><ul class="steps"></ul>`);
-    ctx.steps = ctx.bot.querySelector('.steps');
+    const html = `<p>${esc(p.explanation)}</p><div class="plan" aria-label="Analysis plan">${esc(p.tool)}(${args})<br><span>planned by ${esc(p.planner)}</span></div>`;
+    if (ctx.steps) ctx.steps.insertAdjacentHTML('beforebegin', html);  // keep one ordered step list below the plan
+    else { ctx.bot.insertAdjacentHTML('beforeend', html + '<ul class="steps"></ul>'); ctx.steps = ctx.bot.querySelector('.steps'); }
   }
   function addStep(ctx, text) {
     if (!ctx.steps) { ctx.bot.insertAdjacentHTML('beforeend', '<ul class="steps"></ul>'); ctx.steps = ctx.bot.querySelector('.steps'); }
@@ -296,6 +365,14 @@
   }
   function finishSteps(ctx) {
     ctx.steps?.querySelectorAll('li:not(.done)').forEach(li => { li.classList.add('done'); li.querySelector('.dot').innerHTML = icon('check', 'icon sm'); li.lastElementChild.textContent = li.lastElementChild.textContent.replace(/…$/, ''); });
+  }
+  function showAnswer(ctx, text, source) {
+    finishSteps(ctx);
+    const by = source.startsWith('template') ? `Fixed wording${source.includes('number check') ? ': the model’s wording failed the number check' : ''}` : `Written by ${source} on this computer from the measurements`;
+    const el = document.createElement('div'); el.className = 'answer';
+    el.innerHTML = `<p>${esc(text)}</p><div class="src">${icon('sparkle', 'icon sm')}${esc(by)}</div>`;
+    const card = ctx.bot.querySelector('.card');
+    card ? ctx.bot.insertBefore(el, card) : ctx.bot.appendChild(el);
   }
   function showClarify(ctx, message, suggestions = []) {
     ctx.bot.insertAdjacentHTML('beforeend', `<p>${esc(message)}</p><div class="chips">${suggestions.map(s => `<button class="chip" type="button">${esc(s)}</button>`).join('')}</div>`);
@@ -332,7 +409,7 @@
       ? `${esc(r.model)} embeds each 2.56 km chip on both dates. Every ${r.patch_m} m patch is compared by cosine distance, and patches above an Otsu threshold count as changed. This finds change of any kind (construction, clearing, new water) without choosing an index.`
       : `${idx} is computed from native ${r.grid.res_m} m pixels on dates chosen by the most clear pixels inside the area. Loss counts pixels that crossed from a high to a low ${idx}.`;
     card.innerHTML = `
-      <h3>${fm ? 'Any change' : esc(titleCase(r.label)) + ' change'} · ${esc(titleCase(r.place))}</h3>
+      <h3>${fm ? 'Any change' : esc(titleCase(r.label)) + ' change'} · ${r.place_source === 'drawn' ? 'Selected area' : esc(titleCase(r.place))}</h3>
       <div class="when">${esc(r.date0)} → ${esc(r.date1)} · ${esc(fm ? r.model : r.sensor)} · ${r.grid.res_m} m</div>
       <div class="stats">${stats}
       </div>
@@ -420,6 +497,9 @@
       const h = await fetch('/api/health', { signal: ctrl.signal });
       if (!h.ok) throw 0;
       setMode(true);
+      const hj = await h.json();
+      if (hj.llm) $('#disclosure span').textContent = `Questions are read by ${hj.llm}, running on this computer. Every number is measured from Sentinel-2 pixels and checked before it’s shown.`;
+      try { EXAMPLES.splice(0, EXAMPLES.length, ...(await (await fetch('/api/examples')).json())); if (!log.querySelector('.msg-user')) renderEmpty(); } catch { /* keep defaults */ }
       const ps = await (await fetch('/api/places')).json();
       places = Object.fromEntries(ps.filter(p => p.name !== 'singapore').map(p => [p.name, p.bbox]));
       map.getSource('areas')?.setData(areasGeoJSON());
@@ -432,6 +512,7 @@
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
     if (e.key === '/' && !typing) { e.preventDefault(); q.focus(); }
     if (e.key === 'Escape' && !lp.hidden) { setLayers(false); lb.focus(); }
+    if (e.key === 'Escape' && drawing) { setDrawing(false); $('#btn-draw').focus(); }
   });
   let tt;
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 3200); }
