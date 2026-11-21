@@ -67,9 +67,9 @@ _INDEX_WORDS = [
 ]
 
 EXAMPLES = [
-    "What changed in Tengah since 2019?",
-    "How much vegetation did Tengah lose between 2019 and 2026?",
-    "How has the coastline at Tuas changed since 2018?",
+    "What changed at the Tesla Gigafactory Berlin since 2019?",
+    "How busy is the Bay of Gibraltar with ships since August 2026?",
+    "How steep is the terrain around Zermatt?",
     "What is being built in the area I drew?",
 ]
 
@@ -104,6 +104,20 @@ def windows(start_year: int | None, end_year: int | None, today: date) -> tuple[
     return t0, f"{end_year}-01-01/{end_year}-12-31"
 
 
+def window_label(win: str, today: date | None = None) -> str:
+    """'2019-01-01/2019-12-31' → '2019'; the trailing 12 months → 'the last 12 months'."""
+    a, b = win.split("/")
+    if a[5:] == "01-01" and b[5:] == "12-31" and a[:4] == b[:4]:
+        return a[:4]
+    try:
+        d0, d1 = date.fromisoformat(a), date.fromisoformat(b)
+    except ValueError:
+        return win
+    if 360 <= (d1 - d0).days <= 370 and d1 >= (today or date.today()) - timedelta(days=2):
+        return "the last 12 months"
+    return f"{a} to {b}"
+
+
 def make_plan(tool: str, place: aoi.Place, t0: str, t1: str, planner: str,
               index: str | None = None) -> Plan | Clarify:
     try:
@@ -116,11 +130,11 @@ def make_plan(tool: str, place: aoi.Place, t0: str, t1: str, planner: str,
         args["bbox"] = list(place.bbox)
     if tool == "embedding_change":
         args["model"] = "clay-v1.5"
-        why = f"Look for any kind of change over {where} with the Clay foundation model"
+        why = f"Any change over {where}, using the Clay foundation model"
     else:
         args["index"] = index
-        why = f"Compare {TOPIC_LABEL[index]} over {where}"
-    return Plan(tool, args, f"{why}: clearest date in {t0} vs clearest date in {t1}.", planner)
+        why = f"{TOPIC_LABEL[index][0].upper() + TOPIC_LABEL[index][1:]} change over {where}"
+    return Plan(tool, args, f"{why}: {window_label(t0)} vs {window_label(t1)}.", planner)
 
 
 _AFTER_PREP = re.compile(
@@ -164,9 +178,8 @@ def point_plan(tool: str, question: str, planner: str, place: aoi.Place | None,
     height_m = height_m if height_m in said else 2.0
     args = {"lon": round(pt[0], 6), "lat": round(pt[1], 6), "radius_m": radius_km * 1000,
             "observer_h": height_m, "target_h": 2.0}
-    return Plan(tool, args, f"Work out what a {height_m:g} m observer at "
-                f"{mgrs.to_mgrs(*pt, 4)} can see within {radius_km:g} km, from the Copernicus "
-                "30 m elevation model (it includes buildings and trees).", planner)
+    return Plan(tool, args, f"What a {height_m:g} m observer at {mgrs.to_mgrs(*pt, 4)} can see "
+                f"within {radius_km:g} km (Copernicus 30 m).", planner)
 
 
 def terrain_plan(place: aoi.Place, planner: str) -> Plan | Clarify:
@@ -176,8 +189,7 @@ def terrain_plan(place: aoi.Place, planner: str) -> Plan | Clarify:
         return Clarify(str(e), bbox=place.bbox)
     where = _label(place)
     args = {"place": None if place.source == "drawn" else place.name, "bbox": list(place.bbox)}
-    return Plan("terrain", args, f"Measure elevation and slope over {where} from the Copernicus "
-                "30 m elevation model.", planner)
+    return Plan("terrain", args, f"Elevation and slope over {where} (Copernicus 30 m).", planner)
 
 
 _SHARPEN = re.compile(r"\b(sharpen|sharper|super[- ]?res\w*|enhance|upscal\w*|higher[- ]res\w*|"
@@ -193,9 +205,8 @@ def sharpen_plan(place: aoi.Place, question: str, today: date, planner: str) -> 
     _, win = windows(None, None, today) if not years else windows(years[-1] - 1, years[-1], today)
     args = {"place": None if place.source == "drawn" else place.name, "bbox": list(place.bbox),
             "window": win, "model": "sen2sr-lite"}
-    return Plan("super_resolve", args, f"Sharpen the clearest Sentinel-2 image of {_label(place)} "
-                f"in {win} from 10 m to 2.5 m with SEN2SR, for viewing only (never measured).",
-                planner)
+    return Plan("super_resolve", args, f"Sharpen the clearest image of {_label(place)} from "
+                f"{window_label(win)} to 2.5 m (for viewing only).", planner)
 
 
 _MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
@@ -222,9 +233,8 @@ def activity_plan(place: aoi.Place, question: str, today: date, planner: str) ->
         win = windows(None, None, today)[1]
     args = {"place": None if place.source == "drawn" else place.name, "bbox": list(place.bbox),
             "window": win}
-    return Plan("activity", args, f"Count vessels on Sentinel-1 radar passes over "
-                f"{_label(place)} in {win} (SAHI-style slicing, CFAR detector), then flag "
-                "unusually busy or quiet days.", planner)
+    return Plan("activity", args, f"Count vessels on every radar pass over {_label(place)}, "
+                f"{window_label(win, today)}, and flag unusual days.", planner)
 
 
 _TERRAIN = re.compile(r"\b(elevation|terrain|slope|steep|altitude|how high|hill|mountain|"
@@ -251,6 +261,7 @@ def find_place_in_text(q: str) -> aoi.Place | None:
     # Names after a preposition first, then any other capitalised run past the first word.
     cands = [m.group(1) for m in _AFTER_PREP.finditer(q)]
     cands += [m.group(0) for m in _CAPS.finditer(q) if m.start() > 0]
+    cands.sort(key=len, reverse=True)  # "Bay of Gibraltar" before "Gibraltar"
     seen: set[str] = set()
     for name in (c.strip(" ,.") for c in cands):
         if not name or name.lower() in seen or name.lower() in _NOT_PLACES:
@@ -263,7 +274,7 @@ def find_place_in_text(q: str) -> aoi.Place | None:
     return None
 
 
-_CAPS = re.compile(r"\b[A-Z][\w'.-]*(?: [A-Z][\w'.-]*)*")
+_CAPS = re.compile(r"\b[A-Z][\w'.-]*(?: (?:(?:of|de|del|da|do|di|la|le|the|am|an) )?[A-Z][\w'.-]*)*")
 _NOT_PLACES = {"i", "ndvi", "ndwi", "mndwi", "ndbi", "clay", "sentinel", "what", "how", "has",
                "did", "is", "are", "was", "the area", "this area", "here"}
 

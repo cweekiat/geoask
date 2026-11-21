@@ -47,7 +47,7 @@ def read_to_grid(
     nodata: float | None = None,
 ) -> np.ndarray:
     """Return band ``band`` of ``href`` warped onto ``grid`` as float32 (NaN where no data)."""
-    key = f"{href}|{band}|{resampling.name}|{grid.key()}"
+    key = f"{href}|{band}|{resampling.name}|{grid.key()}|{nodata}"
     cache = _get_cache()
     if cache is not None and (hit := cache.get(key)) is not None:
         return hit

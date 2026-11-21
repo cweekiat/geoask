@@ -103,7 +103,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .topbar {
   position: fixed; z-index: 20; top: calc(12px + var(--safe-t)); left: calc(12px + var(--safe-l));
   width: min(420px, calc(100vw - 24px)); border-radius: var(--r-lg);
-  display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px;
+  display: flex; align-items: center; gap: 6px; padding: 6px;
   background: var(--glass-regular);
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 650; letter-spacing: .01em; padding-right: 6px;
@@ -278,12 +278,11 @@ body.measuring #map canvas { cursor: crosshair; }
   body.panel-collapsed .timeline { bottom: calc(12px + 56px + var(--safe-b)); }
   .hud { display: none; }
   .popover { right: 12px; left: 12px; width: auto; top: calc(64px + var(--safe-t)); }
-  .fab { display: grid !important; }
 }
 .fab { display: none; position: fixed; z-index: 16; left: calc(12px + var(--safe-l)); bottom: calc(12px + var(--safe-b));
   width: 52px; height: 52px; border-radius: 16px; border: 0; color: #fff; background: var(--accent-btn); place-items: center;
   box-shadow: var(--glass-shadow); cursor: pointer; }
-body:not(.panel-collapsed) .fab { display: none !important; }
+
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; scroll-behavior: auto !important; }
@@ -431,3 +430,62 @@ body.locate-mode #timeline { display: none !important; }
 .key-msg.err { color: #ff9b73; }
 button.link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; min-height: 24px; }
 button.link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ---------- panel toggle in the top bar ---------- */
+.topbar #btn-panel { flex: none; }
+.panel-head .spacer { flex: 1; }
+.loc-disc { display: block; }
+.loc-disc summary span { flex: 1; }
+
+/* ---------- work trace (collapsible, like Claude's "Thought for …") ---------- */
+.lead { margin: 0 0 6px; font-size: 14px; line-height: 1.45; }
+.lead .icon { vertical-align: -3px; color: var(--warn); }
+.trace { margin: 2px 0 8px; }
+.trace > summary { list-style: none; display: flex; align-items: center; gap: 8px; min-height: 32px; cursor: pointer;
+  color: var(--ink-2); font-size: 13.5px; border-radius: var(--r-sm); padding: 2px 6px 2px 2px; }
+.trace > summary::-webkit-details-marker { display: none; }
+.trace > summary:hover { color: var(--ink); background: rgba(148,172,204,.08); }
+.trace > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.trace .t-ic { width: 16px; height: 16px; display: grid; place-items: center; flex: none; color: var(--gain); }
+.trace .t-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.trace .t-n { color: var(--ink-3); font-size: 12.5px; white-space: nowrap; margin-left: auto; }
+.trace .t-chev { flex: none; transition: transform .15s; color: var(--ink-3); }
+.trace[open] .t-chev { transform: rotate(90deg); }
+.trace .t-body { border-left: 2px solid var(--line-strong); margin: 4px 0 0 9px; padding: 4px 0 4px 12px; }
+.trace .steps { margin: 0; }
+.steps li.think { display: block; color: var(--ink-2); font-size: 13px; line-height: 1.45; padding-left: 24px; font-style: italic; }
+.steps li.note { color: var(--ink); }
+
+/* ---------- concise Locate answer ---------- */
+.loc-card h3 { font-size: 16px; line-height: 1.3; }
+.area { padding: 8px 10px; }
+.area-main { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; padding: 0; color: var(--ink);
+  font: inherit; text-align: left; cursor: pointer; min-height: 32px; }
+.area-main:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.area-main .a-label { flex: 1; font-weight: 620; font-size: 14.5px; }
+.area .meter { margin: 4px 0; height: 4px; }
+.a-why { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.4; }
+.a-why .link { font-size: 12.5px; margin-left: 4px; }
+.clues { margin-top: 10px; }
+.clue { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.more { margin-top: 8px; }
+.more summary { cursor: pointer; color: var(--ink-2); font-size: 13px; min-height: 32px; display: flex; align-items: center; }
+.clue-list { margin: 4px 0 6px; padding-left: 16px; font-size: 13px; color: var(--ink-2); }
+.clue-list b { color: var(--ink); font-weight: 600; }
+.loc-card .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.loc-card .feedback { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; }
+.loc-row { display: flex; gap: 8px; }
+.loc-row .loc-note { flex: 1; min-width: 0; }
+.loc-row .btn.primary { min-width: 92px; }
+.loc-opts .btn.primary { margin-left: 0; }
+.thumb.wide { width: 128px; height: 86px; }
+#loc-replay { margin-top: 10px; }
+
+/* Draw / measure bars sit to the right of the top bar on wide screens, never over the search. */
+@media (min-width: 761px) {
+  .draw-hint { left: calc(12px + min(420px, 100vw - 24px) + 12px + var(--safe-l)); transform: none;
+    max-width: calc(100vw - 420px - 110px); flex-wrap: wrap; }
+}
+/* Demo mode (no server): Locate can only replay a recorded run, so the composer is hidden. */
+body.demo .loc-composer > :not(.disclosure) { display: none; }
+body.demo .loc-composer { border-top: 0; padding-top: 0; }

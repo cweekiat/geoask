@@ -1,78 +1,78 @@
 {
- "id": "bukit_timah_terrain_103.7727_1.3120_103.8087_1.3480",
+ "id": "zermatt_terrain_7.5750_45.9168_7.9087_46.0643",
  "tool": "terrain",
  "source": "Copernicus GLO-30 DEM",
- "place": "Bukit Timah",
+ "place": "Zermatt",
  "place_bbox": [
-  103.7727,
-  1.312,
-  103.8087,
-  1.348
+  7.57499,
+  45.91675,
+  7.90868,
+  46.06433
  ],
  "place_bbox_approximate": false,
  "place_source": "named",
  "corners": [
   [
-   103.772617,
-   1.348098
+   7.571155,
+   46.064353
   ],
   [
-   103.808745,
-   1.348116
+   7.908933,
+   46.068077
   ],
   [
-   103.808763,
-   1.311754
+   7.911905,
+   45.916629
   ],
   [
-   103.772635,
-   1.311736
+   7.575047,
+   45.912924
   ]
  ],
  "grid": {
-  "crs": "EPSG:32648",
+  "crs": "EPSG:32632",
   "res_m": 30.0,
   "shape": [
-   134,
-   134
+   561,
+   871
   ]
  },
- "elev_min_m": 4.540325164794922,
- "elev_max_m": 95.36724090576172,
- "elev_mean_m": 28.07044219970703,
- "relief_m": 90.82691955566406,
+ "elev_min_m": 1436.8912353515625,
+ "elev_max_m": 4540.26708984375,
+ "elev_mean_m": 2991.644287109375,
+ "relief_m": 3103.3759765625,
  "highest_point": [
-  103.778953,
-  1.347965
+  7.870179,
+  45.94255
  ],
- "slope_mean_deg": 5.979949474334717,
- "steep_ha": 57.15,
- "very_steep_ha": 0.0,
- "area_ha": 1616.04,
+ "slope_mean_deg": 26.360095977783203,
+ "steep_ha": 32868.45,
+ "very_steep_ha": 16636.23,
+ "area_ha": 43976.79,
  "images": {
   "overlay": "overlay.png"
  },
- "seconds": 3.4,
+ "seconds": 0.2,
  "demo": {
-  "question": "How steep is the terrain around Bukit Timah?",
+  "question": "How steep is the terrain around Zermatt?",
   "plan": {
    "tool": "terrain",
    "args": {
-    "place": "Bukit Timah",
+    "place": "Zermatt",
     "bbox": [
-     103.7727,
-     1.312,
-     103.8087,
-     1.348
+     7.57499,
+     45.91675,
+     7.90868,
+     46.06433
     ]
    },
-   "explanation": "Measure elevation and slope over Bukit Timah from the Copernicus 30 m elevation model.",
+   "explanation": "Elevation and slope over Zermatt (Copernicus 30 m).",
    "planner": "rule-based (demo replay)"
   },
   "steps": [
-   "Reading the Copernicus GLO-30 DEM over Bukit Timah (1 tile(s))",
+   "Reading the Copernicus GLO-30 DEM over Zermatt (2 tile(s))",
    "Computing slope and relief"
   ],
-  "answer": "Bukit Timah ranges from 5 m to 95 m (mean 28 m). Mean slope is 6\u00b0, and 57 ha is steeper than 15\u00b0. Heights include buildings and trees."
+  "answer": "Zermatt ranges from 1437 m to 4540 m (mean 2992 m). Mean slope is 26\u00b0, and 32868 ha is steeper than 15\u00b0. Heights include buildings and trees."
  }
 }

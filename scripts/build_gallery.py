@@ -24,13 +24,12 @@ from geoask.agent.planner import Plan, RuleBasedPlanner
 from geoask.server import _run
 
 GALLERY = Path(__file__).resolve().parents[1] / "web" / "gallery"
-SKIP = {"embedding_change": "tengah-clay", "index_change": "tengah"}  # already in the gallery
 TODAY = date(2026, 11, 21)
 
 
 def build(tool: dict, force: bool) -> None:
     dest = GALLERY / tool["id"]
-    if tool["id"] in SKIP or (dest.exists() and not force):
+    if dest.exists() and not force:
         print(f"skip {tool['id']}")
         return
     plan = RuleBasedPlanner().plan(tool["example"], TODAY)

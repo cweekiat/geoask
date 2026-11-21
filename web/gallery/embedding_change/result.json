@@ -1,0 +1,109 @@
+{
+ "id": "Tesla_Gigafactory_Berlin-Brandenburg_clay-v1.5_2019-04-02_2025-11-21",
+ "tool": "embedding_change",
+ "model": "clay-v1.5@v1.5",
+ "label": "any change",
+ "index": "clay",
+ "place": "Tesla Gigafactory Berlin-Brandenburg",
+ "place_bbox": [
+  13.78674,
+  52.38942,
+  13.81498,
+  52.40504
+ ],
+ "place_bbox_approximate": false,
+ "place_source": "named",
+ "date0": "2019-04-02",
+ "date1": "2025-11-21",
+ "sensor": "sentinel-2-l2a",
+ "changed_ha": 116.64,
+ "threshold": 0.3501,
+ "threshold_method": "Otsu on patch cosine distances",
+ "median_distance": 0.2789,
+ "patch_m": 80.0,
+ "compared_fraction": 1.0,
+ "area_ha": 348.88,
+ "corners": [
+  [
+   13.786232,
+   52.405107
+  ],
+  [
+   13.815037,
+   52.4054
+  ],
+  [
+   13.815466,
+   52.3894
+  ],
+  [
+   13.786671,
+   52.389108
+  ]
+ ],
+ "grid": {
+  "crs": "EPSG:32633",
+  "res_m": 10.0,
+  "shape": [
+   178,
+   196
+  ]
+ },
+ "picks": [
+  {
+   "date": "2019-04-02",
+   "clear": 1.0,
+   "haze": 0.012,
+   "scenes": [
+    "S2B_33UVU_20190402_1_L2A",
+    "S2B_33UVU_20190402_0_L2A"
+   ]
+  },
+  {
+   "date": "2025-11-21",
+   "clear": 1.0,
+   "haze": 0.062,
+   "scenes": [
+    "S2C_33UVU_20251121_0_L2A"
+   ]
+  }
+ ],
+ "images": {
+  "before": "before.png",
+  "after": "after.png",
+  "delta": "delta.png",
+  "geotiff": "delta.tif"
+ },
+ "seconds": 17.6,
+ "demo": {
+  "question": "What changed at the Tesla Gigafactory Berlin since 2019?",
+  "plan": {
+   "tool": "embedding_change",
+   "args": {
+    "place": "Tesla Gigafactory Berlin-Brandenburg",
+    "t0": "2019-01-01/2019-12-31",
+    "t1": "2025-11-21/2026-11-21",
+    "bbox": [
+     13.78674,
+     52.38942,
+     13.81498,
+     52.40504
+    ],
+    "model": "clay-v1.5"
+   },
+   "explanation": "Any change over Tesla Gigafactory Berlin-Brandenburg, using the Clay foundation model: 2019 vs the last 12 months.",
+   "planner": "rule-based (demo replay)"
+  },
+  "steps": [
+   "Loading Clay on this device",
+   "Finding the clearest before date over Tesla Gigafactory Berlin-Brandenburg, 2019-01-01 to 2019-12-31",
+   "Reading 10 bands for 2019-04-02",
+   "Embedding 2019-04-02 with clay-v1.5",
+   "Finding the clearest after date over Tesla Gigafactory Berlin-Brandenburg, 2025-11-21 to 2026-11-21",
+   "Reading 10 bands for 2025-11-21",
+   "Embedding 2025-11-21 with clay-v1.5",
+   "Comparing embeddings patch by patch"
+  ],
+  "answer": "Between 2019-04-02 and 2025-11-21, about 117 ha of Tesla Gigafactory Berlin-Brandenburg (33% of the analysed area) changed, according to the Clay foundation model. The highlighted patches on the map show where."
+ }
+}

@@ -1,0 +1,113 @@
+{
+ "index": "ndvi",
+ "date0": "2019-04-02",
+ "date1": "2025-11-21",
+ "mean0": 0.657,
+ "mean1": 0.409,
+ "loss_ha": 132.08,
+ "gain_ha": 0.9,
+ "compared_fraction": 1.0,
+ "area_ha": 348.88,
+ "sensor": "sentinel-2-l2a",
+ "scenes0": [
+  "S2B_33UVU_20190402_1_L2A",
+  "S2B_33UVU_20190402_0_L2A"
+ ],
+ "scenes1": [
+  "S2C_33UVU_20251121_0_L2A"
+ ],
+ "id": "Tesla_Gigafactory_Berlin-Brandenburg_ndvi_2019-04-02_2025-11-21",
+ "tool": "index_change",
+ "label": "vegetation",
+ "place": "Tesla Gigafactory Berlin-Brandenburg",
+ "place_bbox": [
+  13.78674,
+  52.38942,
+  13.81498,
+  52.40504
+ ],
+ "place_bbox_approximate": false,
+ "place_source": "named",
+ "corners": [
+  [
+   13.786232,
+   52.405107
+  ],
+  [
+   13.815037,
+   52.4054
+  ],
+  [
+   13.815466,
+   52.3894
+  ],
+  [
+   13.786671,
+   52.389108
+  ]
+ ],
+ "grid": {
+  "crs": "EPSG:32633",
+  "res_m": 10.0,
+  "shape": [
+   178,
+   196
+  ]
+ },
+ "picks": [
+  {
+   "date": "2019-04-02",
+   "clear": 1.0,
+   "haze": 0.012,
+   "scenes": [
+    "S2B_33UVU_20190402_1_L2A",
+    "S2B_33UVU_20190402_0_L2A"
+   ]
+  },
+  {
+   "date": "2025-11-21",
+   "clear": 1.0,
+   "haze": 0.062,
+   "scenes": [
+    "S2C_33UVU_20251121_0_L2A"
+   ]
+  }
+ ],
+ "images": {
+  "before": "before.png",
+  "after": "after.png",
+  "delta": "delta.png",
+  "geotiff": "delta.tif"
+ },
+ "seconds": 14.0,
+ "demo": {
+  "question": "How much vegetation did the Tesla Gigafactory Berlin lose since 2019?",
+  "plan": {
+   "tool": "index_change",
+   "args": {
+    "place": "Tesla Gigafactory Berlin-Brandenburg",
+    "t0": "2019-01-01/2019-12-31",
+    "t1": "2025-11-21/2026-11-21",
+    "bbox": [
+     13.78674,
+     52.38942,
+     13.81498,
+     52.40504
+    ],
+    "index": "ndvi"
+   },
+   "explanation": "Vegetation (NDVI) change over Tesla Gigafactory Berlin-Brandenburg: 2019 vs the last 12 months.",
+   "planner": "rule-based (demo replay)"
+  },
+  "steps": [
+   "Searching Sentinel-2 scenes over Tesla Gigafactory Berlin-Brandenburg, 2019-01-01 to 2019-12-31",
+   "Ranking 100 before scenes by clear pixels inside Tesla Gigafactory Berlin-Brandenburg, then re-checking the best for haze",
+   "Reading 4 bands at 10 m for 2019-04-02 (100% clear, 1% bright/hazy)",
+   "Searching Sentinel-2 scenes over Tesla Gigafactory Berlin-Brandenburg, 2025-11-21 to 2026-11-21",
+   "Ranking 88 after scenes by clear pixels inside Tesla Gigafactory Berlin-Brandenburg, then re-checking the best for haze",
+   "Reading 4 bands at 10 m for 2025-11-21 (100% clear, 6% bright/hazy)",
+   "Computing NDVI change"
+  ],
+  "answer": "Between 2019-04-02 and 2025-11-21, Tesla Gigafactory Berlin-Brandenburg lost about 132 ha and gained about 1 ha of vegetation. Mean NDVI went from 0.66 to 0.41."
+ }
+}

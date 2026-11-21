@@ -14,6 +14,7 @@
 
 <!-- Top bar: brand + place search (Google Maps-style) -->
 <header class="topbar">
+  <button class="btn-icon" id="btn-panel" type="button" aria-controls="panel" aria-expanded="true" aria-label="Hide panel" title="Hide panel (\)"><svg class="icon" data-icon="panel-left"></svg></button>
   <div class="brand" aria-label="GeoAsk">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="#5aa9ff" stroke-width="1.8"/><ellipse cx="12" cy="12" rx="4" ry="9" fill="none" stroke="#5aa9ff" stroke-width="1.4"/><path d="M3.5 9h17M3.5 15h17" stroke="#5aa9ff" stroke-width="1.4"/><circle cx="17.5" cy="6.5" r="2.2" fill="#e8eef6"/></svg>
     <span>GeoAsk</span>
@@ -36,9 +37,8 @@
       <button role="tab" id="tab-ask" aria-selected="true" aria-controls="pane-ask">Ask</button>
       <button role="tab" id="tab-locate" aria-selected="false" aria-controls="pane-locate">Locate</button>
     </div>
-    <span class="sub" id="mode-sub">answers from satellite pixels</span>
-    <button class="btn-icon" id="new-chat" title="New investigation" aria-label="New investigation"><svg class="icon" data-icon="plus-square"></svg></button>
-    <button class="btn-icon" id="collapse" title="Hide panel" aria-label="Hide panel"><svg class="icon" data-icon="panel-left"></svg></button>
+    <span class="spacer"></span>
+    <button class="btn-icon" id="new-chat" title="Start over" aria-label="Start over"><svg class="icon" data-icon="plus-square"></svg></button>
   </div>
   <div id="pane-ask" role="tabpanel" aria-labelledby="tab-ask" class="pane">
   <div id="log" class="log" role="log" aria-live="polite" aria-relevant="additions"></div>
@@ -67,23 +67,24 @@
         <span><b>Add Photos</b><span class="d">Drop, paste or choose up to 5 · street, aerial or satellite</span></span>
       </label>
       <input type="file" id="loc-file" accept="image/*" multiple class="sr-only">
-      <label for="loc-note" class="sr-only">What you already know (optional)</label>
-      <input id="loc-note" class="loc-note" type="text" placeholder="Anything you know? e.g. “taken in summer, somewhere in Europe”" autocomplete="off">
+      <div class="loc-row">
+        <label for="loc-note" class="sr-only">What you already know (optional)</label>
+        <input id="loc-note" class="loc-note" type="text" placeholder="Optional hint, e.g. “summer, Europe”" autocomplete="off">
+        <button class="btn primary" id="loc-go" type="button" disabled>Locate</button>
+      </div>
       <div class="loc-opts">
         <div class="seg sm" role="radiogroup" aria-label="Model">
           <button role="radio" aria-checked="true" data-model="sonnet" title="Claude Sonnet 5.5: more thorough">Sonnet 5.5</button>
           <button role="radio" aria-checked="false" data-model="haiku" title="Claude Haiku 5.5: faster and much cheaper">Haiku 5.5</button>
         </div>
         <label class="switch"><input type="checkbox" id="loc-meta" checked><span>Share photo details</span></label>
-        <button class="btn primary" id="loc-go" type="button" disabled>Locate</button>
       </div>
-      <details class="disclosure loc-disc"><summary><svg class="icon sm" data-icon="info" aria-hidden="true"></svg>Photos go to Claude (Anthropic) without metadata · areas only, never people</summary>
+      <details class="disclosure loc-disc"><summary><svg class="icon sm" data-icon="info" aria-hidden="true"></svg><span>Privacy: photos go to Claude without metadata. Areas only, never people.</span></summary>
         <p>Photos are sent to Claude with their metadata removed. Details such as camera GPS and time are read on this computer and shared only if “Share photo details” is on. Map searches send coordinates, never photos. Answers are estimates: areas with a confidence, never an exact spot. Don’t use Locate to find or follow people.</p>
         <p id="loc-key"></p></details>
     </div>
   </div>
 </aside>
-<button class="fab" id="fab" aria-label="Show Ask panel"><svg class="icon" data-icon="message"></svg></button>
 
 <!-- Right rail: map controls -->
 <nav class="rail glass" aria-label="Map controls">
@@ -107,7 +108,7 @@
   <h2>Overlays</h2>
   <label class="opt"><input type="checkbox" id="ov-labels" checked><span>Place labels</span></label>
   <label class="opt"><input type="checkbox" id="ov-change" checked disabled><span>Analysis change layer<span class="d" id="ov-change-d">Ask a question to create one</span></span></label>
-  <label class="opt"><input type="checkbox" id="ov-areas" checked><span>Analysis areas<span class="d">Approximate outlines</span></span></label>
+  <label class="opt"><input type="checkbox" id="ov-areas"><span>Demo areas<span class="d">Hand-sized example areas (Singapore)</span></span></label>
   <h2>Mapping</h2>
   <label class="opt"><input type="checkbox" id="ov-mgrs"><span>MGRS grid<span class="d">Zones, 100 km squares, 10 km and 1 km lines by zoom</span></span></label>
   <label class="opt"><input type="checkbox" id="ov-hillshade"><span>Hillshade<span class="d">Terrain relief · AWS Terrain Tiles</span></span></label>
@@ -125,10 +126,10 @@
   <div><div class="label" id="tl-kind">Imagery year</div><div class="value" id="tl-value">2025</div></div>
 </footer>
 
-<button class="hud" id="hud" type="button" title="Cursor position. Click to change the format (decimal, DMS, MGRS, UTM). Right-click the map for a point card." aria-label="Change the coordinate format">1.35210° N  103.81980° E</button>
+<button class="hud" id="hud" type="button" title="Cursor position. Click to change the format (decimal, DMS, MGRS, UTM). Right-click the map for a point card." aria-label="Change the coordinate format">25.00000° N  10.00000° E</button>
 <div class="draw-hint glass-regular" id="measure-hint" role="group" aria-label="Measure" hidden>
   <span id="measure-out" aria-live="polite">Click the map to add points.</span>
-  <button class="btn" id="measure-centre" type="button">Add Point at Centre</button>
+  <button class="btn" id="measure-centre" type="button" title="Add a point at the centre of the map (keyboard and touch)">Add Centre Point</button>
   <button class="btn" id="measure-undo" type="button">Undo</button>
   <button class="btn" id="measure-los" type="button">Line of Sight</button>
   <button class="btn" id="measure-done" type="button">Done</button>

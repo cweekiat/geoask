@@ -1,5 +1,5 @@
 {
- "id": "western_anchorage_activity_2026-08-10_2026-11-15",
+ "id": "bay_of_gibraltar_activity_2026-08-04_2026-11-19",
  "tool": "activity",
  "detector": "sar-vessel-cfar",
  "sensor": "Sentinel-1 RTC (VV)",
@@ -8,271 +8,269 @@
   "overlap": 0.2,
   "merge": "greedy NMM, IoS 0.5"
  },
- "place": "western anchorage",
+ "place": "Bay of Gibraltar",
  "place_bbox": [
-  103.74,
-  1.2,
-  103.86,
-  1.26
+  -5.44726,
+  36.07704,
+  -5.34609,
+  36.18149
  ],
  "place_bbox_approximate": false,
  "place_source": "named",
  "corners": [
   [
-   103.739947,
-   1.260072
+   -5.450598,
+   36.181473
   ],
   [
-   103.860013,
-   1.260128
+   -5.346041,
+   36.183569
   ],
   [
-   103.860038,
-   1.199976
+   -5.342873,
+   36.077092
   ],
   [
-   103.739976,
-   1.199923
+   -5.447289,
+   36.075004
   ]
  ],
  "grid": {
-  "crs": "EPSG:32648",
+  "crs": "EPSG:32630",
   "res_m": 10.0,
   "shape": [
-   665,
-   1336
+   1182,
+   941
   ]
  },
- "date0": "2026-08-10",
- "date1": "2026-11-15",
- "passes": 17,
+ "date0": "2026-08-04",
+ "date1": "2026-11-19",
+ "passes": 16,
  "series": [
   {
+   "date": "2026-08-04",
+   "count": 61,
+   "coverage": 1.0,
+   "orbit": "descending 81",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20260804T061839_20260804T061904_003972_00735D_rtc"
+   ]
+  },
+  {
    "date": "2026-08-10",
-   "count": 91,
-   "coverage": 1.0,
-   "orbit": "ascending 171",
-   "scenes": [
-    "S1D_IW_GRDH_1SDV_20260810T112444_20260810T112509_004062_007671_rtc"
-   ]
-  },
-  {
-   "date": "2026-08-11",
-   "count": 17,
-   "coverage": 1.0,
-   "orbit": "descending 18",
-   "scenes": [
-    "S1D_IW_GRDH_1SDV_20260811T224719_20260811T224744_004084_007731_rtc"
-   ]
-  },
-  {
-   "date": "2026-08-22",
-   "count": 89,
-   "coverage": 1.0,
-   "orbit": "ascending 171",
-   "scenes": [
-    "S1D_IW_GRDH_1SDV_20260822T112444_20260822T112509_004237_007C8B_rtc"
-   ]
-  },
-  {
-   "date": "2026-08-23",
-   "count": 48,
-   "coverage": 1.0,
-   "orbit": "descending 18",
-   "scenes": [
-    "S1D_IW_GRDH_1SDV_20260823T224720_20260823T224745_004259_007D53_rtc"
-   ]
-  },
-  {
-   "date": "2026-09-03",
    "count": 72,
    "coverage": 1.0,
-   "orbit": "ascending 171",
+   "orbit": "descending 81",
    "scenes": [
-    "S1D_IW_GRDH_1SDV_20260903T112445_20260903T112510_004412_0082B1_rtc"
+    "S1C_IW_GRDH_1SDV_20260810T061826_20260810T061851_008929_011B6C_rtc"
    ]
   },
   {
-   "date": "2026-09-04",
-   "count": 48,
+   "date": "2026-08-15",
+   "count": 67,
    "coverage": 1.0,
-   "orbit": "descending 18",
+   "orbit": "descending 154",
    "scenes": [
-    "S1D_IW_GRDH_1SDV_20260904T224720_20260904T224745_004434_008374_rtc"
+    "S1C_IW_GRDH_1SDV_20260815T062635_20260815T062700_009002_011DE1_rtc",
+    "S1D_IW_GRDH_1SDV_20260815T181740_20260815T181805_004140_007928_rtc"
+   ]
+  },
+  {
+   "date": "2026-08-28",
+   "count": 37,
+   "coverage": 1.0,
+   "orbit": "descending 81",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20260828T061840_20260828T061905_004322_007F87_rtc"
+   ]
+  },
+  {
+   "date": "2026-09-02",
+   "count": 46,
+   "coverage": 1.0,
+   "orbit": "descending 154",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20260902T062649_20260902T062714_004395_008208_rtc",
+    "S1C_IW_GRDH_1SDV_20260902T181728_20260902T181753_009272_0126D2_rtc"
    ]
   },
   {
    "date": "2026-09-15",
-   "count": 88,
+   "count": 68,
    "coverage": 1.0,
-   "orbit": "ascending 171",
+   "orbit": "descending 81",
    "scenes": [
-    "S1D_IW_GRDH_1SDV_20260915T112445_20260915T112510_004587_0088BA_rtc"
+    "S1C_IW_GRDH_1SDV_20260915T061827_20260915T061852_009454_012CE4_rtc"
    ]
   },
   {
-   "date": "2026-09-16",
-   "count": 85,
+   "date": "2026-09-20",
+   "count": 0,
    "coverage": 1.0,
-   "orbit": "descending 18",
+   "orbit": "descending 154",
    "scenes": [
-    "S1D_IW_GRDH_1SDV_20260916T224721_20260916T224746_004609_00897D_rtc"
+    "S1C_IW_GRDH_1SDV_20260920T062636_20260920T062701_009527_012F50_rtc",
+    "S1D_IW_GRDH_1SDV_20260920T181741_20260920T181806_004665_008B6F_rtc"
    ]
   },
   {
-   "date": "2026-09-27",
-   "count": 86,
+   "date": "2026-09-26",
+   "count": 53,
    "coverage": 1.0,
-   "orbit": "ascending 171",
+   "orbit": "descending 154",
    "scenes": [
-    "S1D_IW_GRDH_1SDV_20260927T112445_20260927T112510_004762_008EC4_rtc"
+    "S1D_IW_GRDH_1SDV_20260926T062649_20260926T062714_004745_008E1E_rtc",
+    "S1C_IW_GRDH_1SDV_20260926T181728_20260926T181753_009622_013267_rtc"
    ]
+  },
+  {
+   "date": "2026-10-03",
+   "count": 30,
+   "coverage": 1.0,
+   "orbit": "descending 81",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20261003T061841_20261003T061906_004847_0091C2_rtc"
+   ],
+   "baseline": 61.5,
+   "unusual": "quieter"
   },
   {
    "date": "2026-10-09",
-   "count": 116,
+   "count": 56,
    "coverage": 1.0,
-   "orbit": "ascending 171",
+   "orbit": "descending 81",
    "scenes": [
-    "S1D_IW_GRDH_1SDV_20261009T112445_20261009T112510_004937_0094E6_rtc"
+    "S1C_IW_GRDH_1SDV_20261009T061828_20261009T061853_009804_013878_rtc"
    ]
   },
   {
-   "date": "2026-10-10",
-   "count": 108,
+   "date": "2026-10-14",
+   "count": 0,
    "coverage": 1.0,
-   "orbit": "descending 18",
+   "orbit": "descending 154",
    "scenes": [
-    "S1D_IW_GRDH_1SDV_20261010T224721_20261010T224746_004959_0095AF_rtc"
+    "S1C_IW_GRDH_1SDV_20261014T062636_20261014T062701_009877_013B0F_rtc",
+    "S1D_IW_GRDH_1SDV_20261014T181741_20261014T181806_005015_0097A4_rtc"
    ]
   },
   {
    "date": "2026-10-21",
    "count": 62,
    "coverage": 1.0,
-   "orbit": "ascending 171",
+   "orbit": "descending 81",
    "scenes": [
-    "S1D_IW_GRDH_1SDV_20261021T112445_20261021T112510_005112_009AED_rtc"
-   ]
-  },
-  {
-   "date": "2026-10-22",
-   "count": 74,
-   "coverage": 1.0,
-   "orbit": "descending 18",
-   "scenes": [
-    "S1D_IW_GRDH_1SDV_20261022T224721_20261022T224746_005134_009BB1_rtc"
+    "S1C_IW_GRDH_1SDV_20261021T061828_20261021T061853_009979_013E67_rtc"
    ]
   },
   {
    "date": "2026-11-02",
-   "count": 100,
+   "count": 64,
    "coverage": 1.0,
-   "orbit": "ascending 171",
+   "orbit": "descending 81",
    "scenes": [
-    "S1D_IW_GRDH_1SDV_20261102T112445_20261102T112510_005287_00A0EF_rtc"
+    "S1C_IW_GRDH_1SDV_20261102T061827_20261102T061852_010154_014447_rtc"
    ]
   },
   {
-   "date": "2026-11-03",
-   "count": 115,
+   "date": "2026-11-07",
+   "count": 21,
    "coverage": 1.0,
-   "orbit": "descending 18",
+   "orbit": "ascending 74",
    "scenes": [
-    "S1D_IW_GRDH_1SDV_20261103T224720_20261103T224745_005309_00A1B2_rtc"
+    "S1D_IW_GRDH_1SDV_20261107T181741_20261107T181806_005365_00A3A6_rtc"
    ]
   },
   {
-   "date": "2026-11-14",
-   "count": 96,
+   "date": "2026-11-13",
+   "count": 15,
    "coverage": 1.0,
-   "orbit": "ascending 171",
+   "orbit": "descending 154",
    "scenes": [
-    "S1D_IW_GRDH_1SDV_20261114T112444_20261114T112509_005462_00A6EC_rtc"
+    "S1D_IW_GRDH_1SDV_20261113T062649_20261113T062714_005445_00A65A_rtc",
+    "S1C_IW_GRDH_1SDV_20261113T181728_20261113T181753_010322_0149DA_rtc"
    ]
   },
   {
-   "date": "2026-11-15",
-   "count": 91,
+   "date": "2026-11-19",
+   "count": 1,
    "coverage": 1.0,
-   "orbit": "descending 18",
+   "orbit": "descending 154",
    "scenes": [
-    "S1D_IW_GRDH_1SDV_20261115T224720_20261115T224745_005484_00A7B0_rtc"
+    "S1C_IW_GRDH_1SDV_20261119T062636_20261119T062701_010402_014C97_rtc"
    ]
   }
  ],
- "mean_count": 81.52941176470588,
- "median_count": 88.0,
- "max_count": 116,
- "max_date": "2026-10-09",
- "robust_sd": 20.7564,
- "unusual": [],
+ "mean_count": 40.8125,
+ "median_count": 49.5,
+ "max_count": 72,
+ "max_date": "2026-08-10",
+ "robust_sd": 26.686799999999998,
+ "unusual": [
+  {
+   "date": "2026-10-03",
+   "count": 30,
+   "kind": "quieter",
+   "orbit": "descending 81",
+   "orbit_median": 61.5
+  }
+ ],
  "orbits": [
-  "ascending 171",
-  "descending 18"
+  "ascending 74",
+  "descending 154",
+  "descending 81"
  ],
- "detections": 1386,
- "persistent_targets": 3,
- "persistent": [
-  {
-   "lon": 103.786474,
-   "lat": 1.215457,
-   "mgrs": "48N UG 6498 3437"
-  },
-  {
-   "lon": 103.759244,
-   "lat": 1.216077,
-   "mgrs": "48N UG 6195 3444"
-  },
-  {
-   "lon": 103.759604,
-   "lat": 1.216258,
-   "mgrs": "48N UG 6199 3446"
-  }
- ],
+ "detections": 653,
+ "persistent_targets": 0,
+ "persistent": [],
  "images": {
   "overlay": "overlay.png",
   "points": "detections.geojson"
  },
- "seconds": 127.7,
+ "seconds": 77.4,
  "demo": {
-  "question": "How busy is the western anchorage with ships since August 2026?",
+  "question": "How busy is the Bay of Gibraltar with ships since August 2026?",
   "plan": {
    "tool": "activity",
    "args": {
-    "place": "western anchorage",
+    "place": "Bay of Gibraltar",
     "bbox": [
-     103.74,
-     1.2,
-     103.86,
-     1.26
+     -5.44726,
+     36.07704,
+     -5.34609,
+     36.18149
     ],
     "window": "2026-08-01/2026-11-21"
    },
-   "explanation": "Count vessels on Sentinel-1 radar passes over Western Anchorage in 2026-08-01/2026-11-21 (SAHI-style slicing, CFAR detector), then flag unusually busy or quiet days.",
+   "explanation": "Count vessels on every radar pass over Bay of Gibraltar, 2026-08-01 to 2026-11-21, and flag unusual days.",
    "planner": "rule-based (demo replay)"
   },
   "steps": [
-   "Searching Sentinel-1 radar passes over Western Anchorage, 2026-08-01 to 2026-11-21",
-   "Pass 1 of 17: 2026-08-10, detecting vessels in 512 px slices",
-   "Pass 2 of 17: 2026-08-11, detecting vessels in 512 px slices",
-   "Pass 3 of 17: 2026-08-22, detecting vessels in 512 px slices",
-   "Pass 4 of 17: 2026-08-23, detecting vessels in 512 px slices",
-   "Pass 5 of 17: 2026-09-03, detecting vessels in 512 px slices",
-   "Pass 6 of 17: 2026-09-04, detecting vessels in 512 px slices",
-   "Pass 7 of 17: 2026-09-15, detecting vessels in 512 px slices",
-   "Pass 8 of 17: 2026-09-16, detecting vessels in 512 px slices",
-   "Pass 9 of 17: 2026-09-27, detecting vessels in 512 px slices",
-   "Pass 10 of 17: 2026-10-09, detecting vessels in 512 px slices",
-   "Pass 11 of 17: 2026-10-10, detecting vessels in 512 px slices",
-   "Pass 12 of 17: 2026-10-21, detecting vessels in 512 px slices",
-   "Pass 13 of 17: 2026-10-22, detecting vessels in 512 px slices",
-   "Pass 14 of 17: 2026-11-02, detecting vessels in 512 px slices",
-   "Pass 15 of 17: 2026-11-03, detecting vessels in 512 px slices",
-   "Pass 16 of 17: 2026-11-14, detecting vessels in 512 px slices",
-   "Pass 17 of 17: 2026-11-15, detecting vessels in 512 px slices",
-   "Setting aside 3 persistent target(s) seen in the same spot on almost every pass"
+   "Searching Sentinel-1 radar passes over Bay of Gibraltar, 2026-08-01 to 2026-11-21",
+   "Pass 1 of 24: 2026-08-02, detecting vessels in 512 px slices",
+   "Pass 2 of 24: 2026-08-04, detecting vessels in 512 px slices",
+   "Pass 3 of 24: 2026-08-10, detecting vessels in 512 px slices",
+   "Pass 4 of 24: 2026-08-15, detecting vessels in 512 px slices",
+   "Pass 5 of 24: 2026-08-20, detecting vessels in 512 px slices",
+   "Pass 6 of 24: 2026-08-26, detecting vessels in 512 px slices",
+   "Pass 7 of 24: 2026-08-28, detecting vessels in 512 px slices",
+   "Pass 8 of 24: 2026-09-02, detecting vessels in 512 px slices",
+   "Pass 9 of 24: 2026-09-07, detecting vessels in 512 px slices",
+   "Pass 10 of 24: 2026-09-13, detecting vessels in 512 px slices",
+   "Pass 11 of 24: 2026-09-15, detecting vessels in 512 px slices",
+   "Pass 12 of 24: 2026-09-20, detecting vessels in 512 px slices",
+   "Pass 13 of 24: 2026-09-26, detecting vessels in 512 px slices",
+   "Pass 14 of 24: 2026-10-01, detecting vessels in 512 px slices",
+   "Pass 15 of 24: 2026-10-03, detecting vessels in 512 px slices",
+   "Pass 16 of 24: 2026-10-09, detecting vessels in 512 px slices",
+   "Pass 17 of 24: 2026-10-14, detecting vessels in 512 px slices",
+   "Pass 18 of 24: 2026-10-19, detecting vessels in 512 px slices",
+   "Pass 19 of 24: 2026-10-21, detecting vessels in 512 px slices",
+   "Pass 20 of 24: 2026-10-31, detecting vessels in 512 px slices",
+   "Pass 21 of 24: 2026-11-02, detecting vessels in 512 px slices",
+   "Pass 22 of 24: 2026-11-07, detecting vessels in 512 px slices",
+   "Pass 23 of 24: 2026-11-13, detecting vessels in 512 px slices",
+   "Pass 24 of 24: 2026-11-19, detecting vessels in 512 px slices"
   ],
-  "answer": "Over 17 Sentinel-1 radar passes from 2026-08-10 to 2026-11-15, Western Anchorage typically had 88 vessels in view (busiest: 116 on 2026-10-09). Unusual days: no pass stood out. Small craft are missed, and radar can't tell who the vessels are."
+  "answer": "Over 16 Sentinel-1 radar passes from 2026-08-04 to 2026-11-19, Bay of Gibraltar typically had 50 vessels in view (busiest: 72 on 2026-08-10). Unusual days: 2026-10-03 was unusually quieter (30). Small craft are missed, and radar can't tell who the vessels are."
  }
 }

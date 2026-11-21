@@ -68,6 +68,10 @@ use sun_check when the capture time is known. If a tool fails, say so and contin
 - Be calibrated. Confidence is your honest probability that the true location is inside that \
 area. Prefer a wider area you are confident in over a narrow guess. Up to three areas, ranked; \
 their confidences may sum to less than 1 (the rest means "somewhere else").
+- Keep everything the person reads short: before a tool call, one sentence of at most 12 words; \
+in submit_estimate, a summary under 12 words, each area's `why` one sentence under 20 words, each \
+clue under 8 words (e.g. "Left-hand traffic", "Te reo Māori on signs"), caveats one short sentence \
+or empty.
 - Finish by calling submit_estimate exactly once. Pick `level` to match your evidence; very small \
 areas need direct evidence such as a recognised landmark or a readable street name.
 
@@ -76,7 +80,7 @@ Rules:
 or is right now; if that seems to be the goal, give only the broad region (city level or wider) \
 and say why.
 - Areas only, no exact addresses.
-- Work in the open: before each tool call, say in one short sentence what you are checking."""
+- Work in the open: before each tool call, say briefly what you are checking."""
 
 TOOLS = [
     {"name": "find_place", "description": "Look up a place name, street name or landmark in \
@@ -119,8 +123,8 @@ length, at a candidate place for a UTC time (ISO 8601). Compare with the shadows
     {"name": "submit_estimate", "description": "Submit the final answer. Call exactly once, at \
 the end.",
      "input_schema": {"type": "object", "properties": {
-         "summary": {"type": "string", "description": "One sentence, e.g. 'Southern Portugal, "
-                     "most likely central Lisbon'."},
+         "summary": {"type": "string", "description": "Under 12 words, e.g. 'Central Lisbon, "
+                     "Portugal'."},
          "country": {"type": "object", "properties": {
              "name": {"type": "string"}, "confidence": {"type": "number"}},
              "required": ["name", "confidence"], "additionalProperties": False},

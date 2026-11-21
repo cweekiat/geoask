@@ -1,0 +1,85 @@
+{
+ "photo": "photo.jpg",
+ "credit": "Photo: Barcex, CC BY-SA 3.0, Wikimedia Commons",
+ "source_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/95/Valpara%C3%ADso_-_20081207-41.jpg/960px-Valpara%C3%ADso_-_20081207-41.jpg",
+ "model": "claude-sonnet-5-5",
+ "seconds": 5.2,
+ "events": [
+  {
+   "t": 5.17,
+   "type": "usage",
+   "model": "claude-sonnet-5-5",
+   "tokens": {
+    "input_tokens": 4,
+    "output_tokens": 548,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 4702
+   },
+   "cost_usd": 0.0172
+  },
+  {
+   "t": 5.17,
+   "type": "thinking",
+   "text": "I'm settling on the Chilean flag as the subject, placing it at Hotel Gran Hotel Gervasoni on Paseo Gervasoni in Cerro Alegre, Valpara\u00edso, around -33.0405, -71.6280. I'll submit that now.\n\n"
+  },
+  {
+   "t": 5.17,
+   "type": "estimate",
+   "estimate": {
+    "summary": "Hotel Gervasoni area, Cerro Concepci\u00f3n, Valpara\u00edso, Chile",
+    "areas": [
+     {
+      "label": "Paseo Gervasoni, Cerro Concepci\u00f3n",
+      "lat": -33.0407,
+      "lon": -71.6275,
+      "radius_km": 1,
+      "confidence": 0.75,
+      "level": "neighbourhood",
+      "why": "Hotel with Chilean flag, wooden ochre building and cobbles match Gran Hotel Gervasoni at Paseo Gervasoni.",
+      "band": "Likely"
+     }
+    ],
+    "country": {
+     "name": "Chile",
+     "confidence": 0.97
+    },
+    "clues": [
+     {
+      "kind": "landmark",
+      "text": "Chilean flag at hotel",
+      "strength": "strong",
+      "photo": null
+     },
+     {
+      "kind": "architecture",
+      "text": "Ochre timber-clad hillside mansion",
+      "strength": "strong",
+      "photo": null
+     },
+     {
+      "kind": "terrain",
+      "text": "Cobbled sloping street, palm trees",
+      "strength": "medium",
+      "photo": null
+     },
+     {
+      "kind": "language",
+      "text": "Hotel Restaurant sign with G logo",
+      "strength": "medium",
+      "photo": null
+     }
+    ],
+    "caveats": "Identified from memory without tool verification.",
+    "model": "claude-sonnet-5-5",
+    "usage": {
+     "input_tokens": 4,
+     "output_tokens": 548,
+     "cache_read_input_tokens": 0,
+     "cache_creation_input_tokens": 4702
+    },
+    "cost_usd": 0.0172,
+    "rounds": 1
+   }
+  }
+ ]
+}

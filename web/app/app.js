@@ -13,6 +13,7 @@
     minus: '<path d="M5 12h14"/>',
     compass: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/>',
     home: '<path d="M4 11 12 4l8 7"/><path d="M6 10v9h12v-9"/>',
+    chevron: '<path d="m9 6 6 6-6 6"/>',
     'panel-left': '<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/>',
     'plus-square': '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8.5v7M8.5 12h7"/>',
     'arrow-up': '<path d="M12 19V6M6.5 11.5 12 6l5.5 5.5"/>',
@@ -50,7 +51,7 @@
   const $ = s => document.querySelector(s);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const SG = { center: [103.8198, 1.3521], bounds: [[103.59, 1.15], [104.1, 1.48]] };
+  const START = { center: [10, 25], zoom: 1.8 };  // a neutral world view; nothing is region-specific
   const FALLBACK_PLACES = {
     tengah: [103.715, 1.345, 103.755, 1.375], tuas: [103.6, 1.22, 103.68, 1.34],
     'pulau tekong': [103.95, 1.38, 104.06, 1.43], 'jurong island': [103.66, 1.24, 103.73, 1.3],
@@ -58,20 +59,19 @@
     'marina bay': [103.85, 1.27, 103.87, 1.3], 'central catchment': [103.78, 1.34, 103.83, 1.4],
   };
   const EXAMPLES = [
-    'What changed in Tengah since 2019?',
-    'How much vegetation did Tengah lose between 2019 and 2026?',
-    'How has the coastline at Tuas changed since 2018?',
-    'How much new built-up land is there in Punggol since 2019?',
+    'What changed at the Tesla Gigafactory Berlin since 2019?',
+    'How much vegetation did the Tesla Gigafactory Berlin lose since 2019?',
+    'How busy is the Bay of Gibraltar with ships since August 2026?',
+    'How steep is the terrain around Zermatt?',
   ];
-  const DEMO_BASE = '../gallery/tengah/';
   // Same entries as /api/tools (src/geoask/agent/catalog.py); used when there's no server.
   let TOOLS = [
-    { id: 'embedding_change', title: 'Any change', icon: 'sparkle', summary: 'The Clay foundation model compares every 80 m patch between two dates, so it finds construction, clearing or new water without choosing an index.', example: 'What changed in Tengah since 2019?', available: true },
-    { id: 'index_change', title: 'Vegetation, water, built-up', icon: 'leaf', summary: 'Spectral indices (NDVI, MNDWI, NDBI) measured in hectares lost and gained.', example: 'How much vegetation did Tengah lose between 2019 and 2026?', available: true },
-    { id: 'activity', title: 'Vessel activity', icon: 'ship', summary: 'Vessels on every Sentinel-1 radar pass (day, night, through cloud), unusual days flagged, with a density map.', example: 'How busy is the western anchorage with ships since August 2026?', available: true },
-    { id: 'terrain', title: 'Terrain', icon: 'mountain', summary: 'Elevation, slope and relief from the Copernicus 30 m elevation model.', example: 'How steep is the terrain around Bukit Timah?', available: true },
-    { id: 'viewshed', title: 'Viewshed', icon: 'eye', summary: 'What can be seen from a point, allowing for Earth curvature. Right-click the map for a point, or measure two points for line of sight.', example: 'What can a 10 m mast at 1.3546, 103.7764 see within 3 km?', available: true },
-    { id: 'super_resolve', title: 'Sharpened view', icon: 'sharpen', summary: 'Sentinel-2 sharpened from 10 m to 2.5 m (SEN2SR) for viewing, with a consistency map. Never used for measurement.', example: 'Show me a sharper image of Marina Bay', available: true },
+    { id: 'embedding_change', title: 'Any change', icon: 'sparkle', summary: 'The Clay foundation model compares every 80 m patch between two dates, so it finds construction, clearing or new water without choosing an index.', example: 'What changed at the Tesla Gigafactory Berlin since 2019?', available: true },
+    { id: 'index_change', title: 'Vegetation, water, built-up', icon: 'leaf', summary: 'Spectral indices (NDVI, MNDWI, NDBI) measured in hectares lost and gained.', example: 'How much vegetation did the Tesla Gigafactory Berlin lose since 2019?', available: true },
+    { id: 'activity', title: 'Vessel activity', icon: 'ship', summary: 'Vessels on every Sentinel-1 radar pass (day, night, through cloud), unusual days flagged, with a density map.', example: 'How busy is the Bay of Gibraltar with ships since August 2026?', available: true },
+    { id: 'terrain', title: 'Terrain', icon: 'mountain', summary: 'Elevation, slope and relief from the Copernicus 30 m elevation model.', example: 'How steep is the terrain around Zermatt?', available: true },
+    { id: 'viewshed', title: 'Viewshed', icon: 'eye', summary: 'What can be seen from a point, allowing for Earth curvature. Right-click the map for a point, or measure two points for line of sight.', example: 'What can a 2 m observer at 45.98365, 7.78474 see within 10 km?', available: true },
+    { id: 'super_resolve', title: 'Sharpened view', icon: 'sharpen', summary: 'Sentinel-2 sharpened from 10 m to 2.5 m (SEN2SR) for viewing, with a consistency map. Never used for measurement.', example: 'Show me a sharper image of the Sydney Opera House', available: true },
   ];
   let live = false, places = FALLBACK_PLACES, active = null, busy = false, selection = null;
 
@@ -81,7 +81,7 @@
   const map = new maplibregl.Map({
     container: 'map',
     style: 'https://tiles.openfreemap.org/styles/fiord',
-    center: SG.center, zoom: reduceMotion ? 10.8 : 1.8,
+    center: START.center, zoom: START.zoom,
     attributionControl: { compact: true }, maxPitch: 75,
   });
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 110 }), 'bottom-right');
@@ -108,11 +108,11 @@
     map.addLayer({ id: 'hires', type: 'raster', source: 'hires', layout: { visibility: 'none' } }, firstSymbol);
 
     map.addSource('areas', { type: 'geojson', data: areasGeoJSON() });
-    map.addLayer({ id: 'areas-fill', type: 'fill', source: 'areas', paint: { 'fill-color': '#5aa9ff', 'fill-opacity': 0.04 } });
-    map.addLayer({ id: 'areas-line', type: 'line', source: 'areas',
+    map.addLayer({ id: 'areas-fill', type: 'fill', source: 'areas', layout: { visibility: 'none' }, paint: { 'fill-color': '#5aa9ff', 'fill-opacity': 0.04 } });
+    map.addLayer({ id: 'areas-line', type: 'line', source: 'areas', layout: { visibility: 'none' },
       paint: { 'line-color': '#8cc2ff', 'line-width': 1.2, 'line-dasharray': [3, 2], 'line-opacity': 0.75 } });
     map.addLayer({ id: 'areas-label', type: 'symbol', source: 'areas', minzoom: 10.5,
-      layout: { 'text-field': ['get', 'title'], 'text-size': 12, 'text-font': ['Noto Sans Regular'], 'text-anchor': 'top-left', 'text-offset': [0.4, 0.4] },
+      layout: { visibility: 'none', 'text-field': ['get', 'title'], 'text-size': 12, 'text-font': ['Noto Sans Regular'], 'text-anchor': 'top-left', 'text-offset': [0.4, 0.4] },
       paint: { 'text-color': '#cfe3ff', 'text-halo-color': '#070b12', 'text-halo-width': 1.4 } });
     map.addSource('sel', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer({ id: 'sel-fill', type: 'fill', source: 'sel', paint: { 'fill-color': '#5aa9ff', 'fill-opacity': 0.12 } });
@@ -121,7 +121,6 @@
     map.on('mouseenter', 'areas-fill', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'areas-fill', () => map.getCanvas().style.cursor = '');
 
-    if (!reduceMotion) setTimeout(() => map.flyTo({ center: SG.center, zoom: 10.8, duration: 3200, essential: false }), 400);
   });
   map.on('error', e => { if (String(e?.error?.message || '').includes('styles/fiord')) toast('Map style unavailable — check your connection.'); });
 
@@ -129,7 +128,7 @@
   const FORMATS = ['dd', 'dms', 'mgrs', 'utm'], FORMAT_NAMES = { dd: 'Decimal', dms: 'DMS', mgrs: 'MGRS', utm: 'UTM' };
   let fmt = 'dd';
   try { fmt = FORMATS.includes(localStorage.getItem('geoask.fmt')) ? localStorage.getItem('geoask.fmt') : 'dd'; } catch { /* private mode */ }
-  let lastPos = { lng: 103.8198, lat: 1.3521 };
+  let lastPos = { lng: START.center[0], lat: START.center[1] };
   const hud = $('#hud');
   const showHud = () => { hud.textContent = Geo.format(lastPos.lng, lastPos.lat, fmt); };
   hud.onclick = () => {
@@ -152,7 +151,7 @@
   $('#btn-zin').onclick = () => map.zoomIn();
   $('#btn-zout').onclick = () => map.zoomOut();
   $('#btn-north').onclick = () => map.easeTo({ bearing: 0, pitch: 0, duration: reduceMotion ? 0 : 500 });
-  $('#btn-home').onclick = () => map.fitBounds(SG.bounds, { padding: pad(), duration: reduceMotion ? 0 : 900 });
+  $('#btn-home').onclick = () => map.flyTo({ ...START, bearing: 0, pitch: 0, duration: reduceMotion ? 0 : 1200 });
   $('#btn-globe').onclick = e => {
     const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
     e.currentTarget.setAttribute('aria-pressed', on);
@@ -317,7 +316,7 @@
   $('#ov-mgrs').onchange = e => { vis('mgrs-line', e.target.checked); vis('mgrs-label', e.target.checked); refreshGrid(); };
   map.on('moveend', refreshGrid);
 
-  const setCollapsedSafe = c => $('#panel').dataset.collapsed === String(!c) && $(c ? '#collapse' : '#fab').click();
+  const setCollapsedSafe = c => setCollapsed(c);  // defined with the panel below; called later
   // ---------- measure distance and bearing (WGS84 ellipsoid, Vincenty) ----------
   let measuring = false, mpts = [];
   const mhint = $('#measure-hint'), mout = $('#measure-out');
@@ -329,7 +328,8 @@
     let total = 0, leg;
     for (let i = 1; i < mpts.length; i++) { leg = Geo.inverse(...mpts[i - 1], ...mpts[i]); total += leg.m; }
     const mils = Math.round(leg.bearing * 6400 / 360) % 6400;
-    mout.textContent = `Total ${Geo.fmtDist(total)} · last leg ${Geo.fmtDist(leg.m)} at ${leg.bearing.toFixed(1).padStart(5, '0')}° true (${mils} mils)`;
+    const brg = `${leg.bearing.toFixed(1).padStart(5, '0')}° true · ${mils} mil`;
+    mout.textContent = mpts.length > 2 ? `${Geo.fmtDist(total)} total · last leg ${Geo.fmtDist(leg.m)}, ${brg}` : `${Geo.fmtDist(total)} · ${brg}`;
   }
   function setMeasuring(on) {
     measuring = on; mhint.hidden = !on; $('#btn-measure').setAttribute('aria-pressed', on);
@@ -512,13 +512,20 @@
 
   // ---------- panel ----------
   const panel = $('#panel');
-  const setCollapsed = c => {
+  // One toggle, always in the same place in the top bar (HIG › Sidebars: collapsible, and people
+  // must be able to bring it back from where they hid it). Shortcut: \
+  const panelBtn = $('#btn-panel');
+  function setCollapsed(c) {
     panel.dataset.collapsed = c; document.body.classList.toggle('panel-collapsed', c);
+    panelBtn.setAttribute('aria-expanded', !c);
+    panelBtn.setAttribute('aria-label', c ? 'Show panel' : 'Hide panel'); panelBtn.title = `${c ? 'Show' : 'Hide'} panel (\\)`;
     if (!c) $('#ask').focus({ preventScroll: true });
   };
-  $('#collapse').onclick = () => setCollapsed(true);
-  $('#fab').onclick = () => setCollapsed(false);
-  $('#new-chat').onclick = () => { clearResult(); log.innerHTML = ''; renderEmpty(); };
+  panelBtn.onclick = () => setCollapsed(panel.dataset.collapsed !== 'true');
+  $('#new-chat').onclick = () => {
+    if (!$('#pane-locate').hidden) { locLog.innerHTML = ''; locEmpty(); refreshLocStatus().then(st => { if (st && !st.available) showKeyCard(); }); clearLocMap(); return; }
+    clearResult(); log.innerHTML = ''; renderEmpty();
+  };
 
   const log = $('#log');
   function renderEmpty() {
@@ -598,18 +605,40 @@
     log.scrollTop = log.scrollHeight;
   }
 
+  // Work trace, as in Claude's apps: one line that shows the current step while working, then
+  // "Worked for 42 s · 7 steps". The chevron opens every step, the plan and the reasoning.
+  function ensureTrace(ctx) {
+    if (ctx.trace) return;
+    ctx.t0 = performance.now();
+    const d = document.createElement('details'); d.className = 'trace';
+    d.innerHTML = `<summary><span class="t-ic"><span class="spinner" role="img" aria-label="Working"></span></span><span class="t-label">Working…</span><span class="t-n"></span>${icon('chevron', 'icon sm t-chev')}</summary><div class="t-body"><ul class="steps"></ul></div>`;
+    ctx.bot.appendChild(d); ctx.trace = d; ctx.steps = d.querySelector('.steps');
+  }
+  function traceCount(ctx) {
+    const n = ctx.steps.querySelectorAll('li:not(.note):not(.think):not(.ev)').length;
+    ctx.trace.querySelector('.t-n').textContent = `${n} step${n === 1 ? '' : 's'}${ctx.costText ? ` · ${ctx.costText}` : ''}`;
+  }
   function showPlan(ctx, p) {
+    ensureTrace(ctx);
     const args = Object.entries(p.args).map(([k, v]) => `${k}=<b>${esc(v)}</b>`).join(', ');
-    const html = `<p>${esc(p.explanation)}</p><div class="plan" aria-label="Analysis plan">${esc(p.tool)}(${args})<br><span>planned by ${esc(p.planner)}</span></div>`;
-    if (ctx.steps) ctx.steps.insertAdjacentHTML('beforebegin', html);  // keep one ordered step list below the plan
-    else { ctx.bot.insertAdjacentHTML('beforeend', html + '<ul class="steps"></ul>'); ctx.steps = ctx.bot.querySelector('.steps'); }
+    ctx.trace.insertAdjacentHTML('beforebegin', `<p class="lead">${esc(p.explanation)}</p>`);
+    ctx.steps.insertAdjacentHTML('beforebegin', `<div class="plan" aria-label="Analysis plan">${esc(p.tool)}(${args})<br><span>planned by ${esc(p.planner)}</span></div>`);
   }
   function addStep(ctx, text) {
-    if (!ctx.steps) { ctx.bot.insertAdjacentHTML('beforeend', '<ul class="steps"></ul>'); ctx.steps = ctx.bot.querySelector('.steps'); }
+    ensureTrace(ctx);
     finishSteps(ctx, true);
     ctx.steps.insertAdjacentHTML('beforeend', `<li><span class="dot"><span class="spinner" role="img" aria-label="In progress"></span></span><span>${esc(text)}…</span></li>`);
+    ctx.trace.querySelector('.t-label').textContent = `${text}…`;
+    traceCount(ctx);
   }
-  function finishSteps(ctx) {
+  function finishSteps(ctx, intermediate = false) {
+    if (!intermediate && ctx.trace && !ctx.traceDone) {
+      ctx.traceDone = true;
+      const sec = Math.max(1, Math.round((performance.now() - ctx.t0) / 1000));
+      ctx.trace.querySelector('.t-ic').innerHTML = icon('check', 'icon sm');
+      ctx.trace.querySelector('.t-label').textContent = `Worked for ${sec < 90 ? `${sec} s` : `${Math.round(sec / 60)} min`}`;
+      traceCount(ctx);
+    }
     ctx.steps?.querySelectorAll('li:not(.done)').forEach(li => { li.classList.add('done'); const d = li.querySelector('.dot'); if (d) d.innerHTML = icon('check', 'icon sm'); li.lastElementChild.textContent = li.lastElementChild.textContent.replace(/…$/, ''); });
   }
   function showAnswer(ctx, text, source) {
@@ -825,7 +854,6 @@
   function setTab(t) {
     for (const [k, b] of Object.entries(tabs)) b.setAttribute('aria-selected', k === t);
     $('#pane-ask').hidden = t !== 'ask'; $('#pane-locate').hidden = t !== 'locate';
-    $('#mode-sub').textContent = t === 'ask' ? 'answers from satellite pixels' : 'photo geolocation';
     document.body.classList.toggle('locate-mode', t === 'locate');  // the imagery timeline isn't used here
     try { localStorage.setItem('geoask.tab', t); } catch { /* ignore */ }
     if (t === 'locate' && !locLog.children.length) locEmpty();
@@ -845,7 +873,8 @@
       <p>Add one or more photos of the same place: street views, travel photos, drone or satellite images. Claude reads the clues (signs, roads, plants, buildings, terrain, sun) and checks them against open map data, reference photos and satellite imagery.</p>
       <div class="tool"><div class="tool-h">${icon('check', 'icon sm')}<b>Works best with</b></div><p>Outdoor scenes with roads, signs, buildings, coastlines or mountains; several photos of one place; aerial views with distinctive shapes.</p></div>
       <div class="tool"><div class="tool-h">${icon('info', 'icon sm')}<b>What you get</b></div><p>Up to three areas on the map, each with a likelihood and the reasons behind it. Never an exact spot, and never anything about who is in a photo.</p></div>
-      ${live ? '' : `<p class="tip">Locate needs <code>geoask serve</code> with an Anthropic API key, so it can’t run on this demo page.</p>`}</div>`;
+      ${live ? '' : `<p class="tip">Locate runs on your computer with <code>geoask serve</code> and an Anthropic API key. On this demo page you can replay a real run.</p><button class="btn primary" type="button" id="loc-replay">${icon('photo', 'icon sm')}Replay a Real Run</button>`}</div>`;
+    locLog.querySelector('#loc-replay')?.addEventListener('click', replayLocate);
   }
   function renderThumbs() {
     $('#loc-photos').innerHTML = locFiles.map((f, i) => `<div class="thumb"><img src="${f.url}" alt="Photo ${i + 1}: ${esc(f.file.name)}"><span class="n">${i + 1}</span><button type="button" data-i="${i}" aria-label="Remove photo ${i + 1}">${icon('x', 'icon')}</button></div>`).join('');
@@ -971,6 +1000,27 @@
     locLog.scrollTop = 0;
   }
 
+  // Demo mode: replay a recorded live run (scripts/record_locate.py), event by event.
+  async function replayLocate() {
+    const base = '../gallery/locate/';
+    const run = await (await fetch(base + 'run.json')).json();
+    locLog.innerHTML = '';
+    const user = document.createElement('div'); user.className = 'msg-user';
+    user.innerHTML = `1 photo · recorded run<br><small>${esc(run.model)} · ${esc(run.credit)}</small>`;
+    locLog.appendChild(user);
+    const ctx = { bot: locMsg(), steps: null, trace: null };
+    ensureTrace(ctx);
+    ctx.trace.insertAdjacentHTML('beforebegin', `<div class="loc-photos"><div class="thumb wide"><img src="${base + run.photo}" alt="Photo to locate: a hillside street with timber houses"></div></div>`);
+    addStep(ctx, 'Read 1 photo on this computer');
+    let last = 0;
+    for (const ev of run.events) {
+      await sleep(Math.min(1400, Math.max(250, (ev.t - last) * 120)));
+      last = ev.t;
+      ctx.t0 = performance.now() - ev.t * 1000;  // the trace shows the recorded run's timing
+      locEvent(ev, ctx); locLog.scrollTop = locLog.scrollHeight;
+    }
+  }
+
   async function runLocate(extraNote = '') {
     if (!locFiles.length || locBusy) return;
     if (!live) { const el = locMsg(); el.innerHTML = `<p>Locate runs on your own computer with <code>geoask serve</code> and an Anthropic API key, so it can’t run on this demo page.</p><div class="plan">uv pip install -e ".[serve,locate]"<br>echo "ANTHROPIC_API_KEY=…" &gt; .env<br>geoask serve</div>`; return; }
@@ -986,8 +1036,8 @@
     const user = document.createElement('div'); user.className = 'msg-user';
     user.innerHTML = `${locFiles.length} photo${locFiles.length > 1 ? 's' : ''}${note ? ` · ${esc(note)}` : ''}<br><small>${locModel === 'sonnet' ? 'Claude Sonnet 5.5' : 'Claude Haiku 5.5'}</small>`;
     locLog.querySelector('.empty')?.remove(); locLog.appendChild(user);
-    const ctx = { bot: locMsg(), steps: null, reasoning: null, evidence: null, cost: null };
-    ctx.bot.innerHTML = `<ul class="steps"></ul>`; ctx.steps = ctx.bot.querySelector('.steps');
+    const ctx = { bot: locMsg(), steps: null, trace: null };
+    ensureTrace(ctx);
     map.getSource('loc-areas')?.setData({ type: 'FeatureCollection', features: [] });
     map.getSource('loc-labels')?.setData({ type: 'FeatureCollection', features: [] });
     try {
@@ -1018,15 +1068,14 @@
   function locEvent(ev, ctx) {
     if (ev.type === 'photos') {
       const withGps = ev.photos.filter(p => p.meta?.gps).length;
-      ctx.steps.insertAdjacentHTML('beforebegin', `<div class="loc-photos">${ev.photos.map(p => `<div class="thumb"><img src="data:image/jpeg;base64,${p.thumb}" alt="Photo ${p.index}"><span class="n">${p.index}</span>${p.meta?.gps ? '<span class="gps">GPS</span>' : ''}</div>`).join('')}</div>`);
+      ctx.trace.insertAdjacentHTML('beforebegin', `<div class="loc-photos">${ev.photos.map(p => `<div class="thumb"><img src="data:image/jpeg;base64,${p.thumb}" alt="Photo ${p.index}"><span class="n">${p.index}</span>${p.meta?.gps ? '<span class="gps">GPS</span>' : ''}</div>`).join('')}</div>`);
       locStep(ctx, `Read ${ev.photos.length} photo${ev.photos.length > 1 ? 's' : ''} on this computer${withGps ? `: ${withGps} with camera GPS` : ''}`);
     } else if (ev.type === 'recorded') {
       map.getSource('loc-recorded')?.setData({ type: 'FeatureCollection', features: ev.points.map(p => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) });
-      ctx.steps.insertAdjacentHTML('beforebegin', `<div class="card"><h3>Camera-recorded location</h3><p class="method">${ev.points.map(p => `Photo ${p.index}: ${esc(Geo.format(p.lon, p.lat, 'dd'))} · ${esc(Geo.toMGRS(p.lon, p.lat, 4) || '')}`).join('<br>')}</p><p class="method">Shown as an amber dot. This comes from the photo’s own metadata, not from AI. ${$('#loc-meta').checked ? 'Claude will check whether the pictures agree with it.' : 'It isn’t shared with Claude.'}</p></div>`);
+      ctx.trace.insertAdjacentHTML('beforebegin', `<p class="lead">${icon('pin', 'icon sm')} Camera GPS: ${ev.points.map(p => `${esc(Geo.toMGRS(p.lon, p.lat, 4) || Geo.format(p.lon, p.lat, 'dd'))}`).join(', ')} <span class="method">(from the photo, not AI; amber dot)</span></p>`);
     } else if (ev.type === 'step') locStep(ctx, ev.text);
     else if (ev.type === 'thinking') {
-      if (!ctx.reasoning) { ctx.steps.insertAdjacentHTML('beforebegin', `<details class="reasoning"><summary>${icon('sparkle', 'icon sm')}Claude’s reasoning (summary)</summary></details>`); ctx.reasoning = ctx.bot.querySelector('.reasoning'); }
-      ctx.reasoning.insertAdjacentHTML('beforeend', `<p>${esc(ev.text)}</p>`);
+      ctx.steps.insertAdjacentHTML('beforeend', `<li class="think done">${esc(ev.text)}</li>`);
     } else if (ev.type === 'note') {
       finishSteps(ctx); ctx.steps.insertAdjacentHTML('beforeend', `<li class="note done">${esc(ev.text)}</li>`);
     } else if (ev.type === 'evidence') {
@@ -1035,44 +1084,52 @@
       }
     } else if (ev.type === 'usage') {
       const t = ev.tokens || {};
-      const txt = `${(t.input_tokens + (t.cache_read_input_tokens || 0) + (t.cache_creation_input_tokens || 0)).toLocaleString()} in · ${(t.output_tokens || 0).toLocaleString()} out · ≈ $${ev.cost_usd.toFixed(3)}`;
-      if (!ctx.cost) { ctx.bot.insertAdjacentHTML('afterbegin', `<div class="cost" aria-label="Tokens and estimated cost so far"></div>`); ctx.cost = ctx.bot.querySelector('.cost'); }
-      ctx.cost.textContent = `${ev.model} · ${txt}`;
+      ctx.costText = `≈ $${ev.cost_usd.toFixed(2)}`;
+      ctx.tokens = `${(t.input_tokens + (t.cache_read_input_tokens || 0) + (t.cache_creation_input_tokens || 0)).toLocaleString()} tokens in, ${(t.output_tokens || 0).toLocaleString()} out`;
+      traceCount(ctx);
     } else if (ev.type === 'estimate') showEstimate(ctx, ev.estimate);
     else if (ev.type === 'error') locError(ctx, ev.message, ev.hint);
   }
 
+  function clearLocMap() {
+    ['loc-areas', 'loc-labels', 'loc-recorded'].forEach(id => map.getSource(id)?.setData({ type: 'FeatureCollection', features: [] }));
+  }
+  // Concise answer: headline, ranked areas (one line of why each), a few clue chips. Everything
+  // else (all clues, caveats, model, cost) sits behind "Details".
   function showEstimate(ctx, e) {
     finishSteps(ctx);
     showAreas(e.areas);
-    const card = document.createElement('div'); card.className = 'card';
     const pct = c => `${Math.round(c * 100)}%`;
     const km = r => r < 1 ? `${Math.round(r * 1000)} m` : `${r < 10 ? r.toFixed(1) : Math.round(r)} km`;
+    const rest = 1 - e.areas.reduce((s, a) => s + a.confidence, 0);
+    const strong = [...e.clues].sort((a, b) => ['strong', 'medium', 'weak'].indexOf(a.strength) - ['strong', 'medium', 'weak'].indexOf(b.strength));
+    const card = document.createElement('div'); card.className = 'card loc-card';
     card.innerHTML = `<h3>${esc(e.summary)}</h3>
-      <div class="when">${e.country?.name ? `${esc(e.country.name)} · ${pct(e.country.confidence)} · ` : ''}${esc(e.model)} · ${e.rounds} steps · ≈ $${e.cost_usd.toFixed(3)}</div>
+      ${e.country?.name ? `<div class="when">${esc(e.country.name)} · ${pct(e.country.confidence)}</div>` : ''}
       <ol class="areas">${e.areas.map((a, i) => `<li class="area" data-i="${i}">
-        <div class="area-h"><span class="rank">${i + 1}</span><b>${esc(a.label)}</b><span class="band ${a.band}">${a.band} · ${pct(a.confidence)}</span></div>
-        <div class="meter" role="img" aria-label="Confidence ${pct(a.confidence)}"><i style="width:${Math.max(2, a.confidence * 100)}%"></i></div>
-        <p>${esc(a.why)}</p>
-        <p class="method">Within ${km(a.radius_km)} of ${esc(Geo.format(a.lon, a.lat, 'dd'))} · ${esc(a.level)}</p>
-        <div class="row"><button class="btn sm" type="button" data-show>${icon('target', 'icon sm')}Show on Map</button><button class="btn sm" type="button" data-not>${icon('x', 'icon sm')}Not Here</button></div></li>`).join('')}</ol>
-      ${e.areas.reduce((s, a) => s + a.confidence, 0) < 0.97 ? `<p class="method">Remaining ${pct(1 - e.areas.reduce((s, a) => s + a.confidence, 0))}: somewhere else.</p>` : ''}
-      <div class="clues" aria-label="Clues">${e.clues.map(c => `<span class="clue ${c.strength}" title="${esc(c.strength)} clue${c.photo ? `, photo ${c.photo}` : ''}"><i>${esc(c.kind)}</i>${esc(c.text)}</span>`).join('')}</div>
-      ${e.caveats ? `<p class="method">${esc(e.caveats)}</p>` : ''}
-      <div class="actions"><button class="btn" type="button" data-retry>${icon('retry', 'icon sm')}Try Again</button><button class="btn" type="button" data-switch>Try ${locModel === 'sonnet' ? 'Haiku 5.5' : 'Sonnet 5.5'}</button></div>
-      <p class="method">AI estimate: Claude can be wrong, and confidence is its own judgement. Strong clues are outlined in teal; weak ones are dashed.</p>
-      <div class="feedback"><span>Was this right?</span>
-        <button class="btn-icon fb" aria-label="Right" aria-pressed="false">${icon('thumbup', 'icon sm')}</button>
-        <button class="btn-icon fb" aria-label="Wrong" aria-pressed="false">${icon('thumbdown', 'icon sm')}</button><span class="fb-note" role="status"></span></div>`;
+        <button class="area-main" type="button" aria-label="Show area ${i + 1} on the map: ${esc(a.label)}, ${a.band} ${pct(a.confidence)}">
+          <span class="rank">${i + 1}</span><span class="a-label">${esc(a.label)}</span><span class="band ${a.band}">${a.band} ${pct(a.confidence)}</span></button>
+        <div class="meter" aria-hidden="true"><i style="width:${Math.max(2, a.confidence * 100)}%"></i></div>
+        <p class="a-why">${esc(a.why)} <button class="link" type="button" data-not>Not here</button></p></li>`).join('')}</ol>
+      <div class="clues" aria-label="Key clues">${strong.slice(0, 4).map(c => `<span class="clue ${c.strength}" title="${esc(c.kind)}: ${esc(c.text)} (${c.strength})">${esc(c.text)}</span>`).join('')}</div>
+      <details class="more"><summary>Details</summary>
+        <ul class="clue-list">${strong.map(c => `<li><b>${esc(c.kind)}</b> ${esc(c.text)} <span class="method">(${c.strength}${c.photo ? `, photo ${c.photo}` : ''})</span></li>`).join('')}</ul>
+        ${e.areas.map((a, i) => `<p class="method">${i + 1}. within ${km(a.radius_km)} of ${esc(Geo.format(a.lon, a.lat, 'dd'))} (${esc(a.level)})</p>`).join('')}
+        ${rest > 0.03 ? `<p class="method">Remaining ${pct(rest)}: somewhere else.</p>` : ''}
+        ${e.caveats ? `<p class="method">${esc(e.caveats)}</p>` : ''}
+        <p class="method">${esc(e.model)} · ${e.rounds} rounds · ${ctx.tokens ? esc(ctx.tokens) + ' · ' : ''}≈ $${e.cost_usd.toFixed(3)}. AI estimate: confidence is Claude’s own judgement and can be wrong.</p>
+      </details>
+      <div class="actions"><button class="btn" type="button" data-retry>${icon('retry', 'icon sm')}Try Again</button><button class="btn" type="button" data-switch>Ask ${locModel === 'sonnet' ? 'Haiku' : 'Sonnet'}</button>
+        <span class="feedback"><button class="btn-icon fb" aria-label="Right" aria-pressed="false">${icon('thumbup', 'icon sm')}</button><button class="btn-icon fb" aria-label="Wrong" aria-pressed="false">${icon('thumbdown', 'icon sm')}</button><span class="fb-note" role="status"></span></span></div>`;
     ctx.bot.appendChild(card);
     card.querySelectorAll('.area').forEach(li => {
       const a = e.areas[+li.dataset.i];
-      li.querySelector('[data-show]').onclick = () => { card.querySelectorAll('.area').forEach(x => x.classList.toggle('sel', x === li)); fitAreas([a]); };
+      li.querySelector('.area-main').onclick = () => { card.querySelectorAll('.area').forEach(x => x.classList.toggle('sel', x === li)); fitAreas([a]); };
       li.querySelector('[data-not]').onclick = () => runLocate(`It is not in ${a.label} (around ${a.lat.toFixed(3)}, ${a.lon.toFixed(3)})`);
     });
     card.querySelector('[data-retry]').onclick = () => runLocate();
     card.querySelector('[data-switch]').onclick = () => { document.querySelector(`[data-model="${locModel === 'sonnet' ? 'haiku' : 'sonnet'}"]`).click(); runLocate(); };
-    card.querySelectorAll('.fb').forEach(b => b.onclick = () => { card.querySelectorAll('.fb').forEach(x => x.setAttribute('aria-pressed', x === b)); card.querySelector('.fb-note').textContent = 'Thanks. Feedback stays on this device.'; });
+    card.querySelectorAll('.fb').forEach(b => b.onclick = () => { card.querySelectorAll('.fb').forEach(x => x.setAttribute('aria-pressed', x === b)); card.querySelector('.fb-note').textContent = 'Thanks'; });
   }
   try { if (localStorage.getItem('geoask.tab') === 'locate') setTab('locate'); } catch { /* ignore */ }
 
@@ -1101,29 +1158,15 @@
   async function askDemo(question, ctx) {
     const tool = DEMO_TOOL.find(([re]) => re.test(question));
     if (tool) return askDemoTool(tool[1], question, ctx);
-    const named = Object.keys(places).find(p => question.toLowerCase().includes(p));
-    if (named && named !== 'tengah') {
-      ctx.bot.insertAdjacentHTML('beforeend', `<p>This demo can't run new analyses, because GitHub Pages has no server. Run GeoAsk on your Mac or Linux machine to ask about ${esc(titleCase(named))}:</p><div class="plan">uv pip install -e ".[serve]"<br>geoask serve</div><p>Here is a precomputed example instead.</p>`);
-    }
-    // A topic word picks the NDVI example; an open "what changed" question picks the Clay one.
+    // A topic word picks the vegetation example; an open "what changed" question picks Clay.
     const topic = /vegetat|forest|green|tree|park|water|coast|built|construct/i.test(question);
-    const base = topic ? DEMO_BASE : '../gallery/tengah-clay/';
-    const r = await (await fetch(base + 'result.json')).json();
-    const t = { t0: '2019-01-01/2019-12-31', t1: '2026-01-01/2026-11-20' };
-    if (topic) showPlan(ctx, { tool: 'index_change', planner: 'rule-based (demo replay)', explanation: 'Compare vegetation (NDVI) over Tengah: clearest date in 2019 vs clearest date in 2026.', args: { place: 'tengah', index: 'ndvi', ...t } });
-    else showPlan(ctx, { tool: 'embedding_change', planner: 'rule-based (demo replay)', explanation: 'Look for any kind of change over Tengah with the Clay foundation model: clearest date in 2019 vs clearest date in 2026.', args: { place: 'tengah', model: 'clay-v1.5', ...t } });
-    const steps = topic
-      ? ['Searching Sentinel-2 scenes over Tengah, 2019', 'Ranking 64 scenes by clear pixels inside Tengah, then re-checking the best for haze', `Reading 4 bands at 10 m for ${r.date0}`, 'Searching and ranking 2026 scenes', `Reading 4 bands at 10 m for ${r.date1}`, 'Computing NDVI change']
-      : ['Loading Clay on this device', 'Finding the clearest before date over Tengah', `Reading 10 bands for ${r.date0}`, `Embedding ${r.date0} with clay-v1.5`, 'Finding the clearest after date', `Embedding ${r.date1} with clay-v1.5`, 'Comparing embeddings patch by patch'];
-    for (const s of steps) {
-      addStep(ctx, s); log.scrollTop = log.scrollHeight; await sleep(450);
-    }
-    showResult(ctx, r, base);
+    return askDemoTool(topic ? 'index_change' : 'embedding_change', question, ctx);
   }
 
   // ---------- boot ----------
   function setMode(isLive) {
     live = isLive;
+    document.body.classList.toggle('demo', !isLive);
     const m = $('#mode');
     m.textContent = isLive ? 'Live' : 'Demo';
     m.className = 'mode-chip ' + (isLive ? 'live' : 'demo');
@@ -1151,6 +1194,7 @@
   document.addEventListener('keydown', e => {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
     if (e.key === '/' && !typing) { e.preventDefault(); q.focus(); }
+    if (e.key === '\\' && !typing) { e.preventDefault(); panelBtn.click(); }
     if (e.key === 'Escape' && !lp.hidden) { setLayers(false); lb.focus(); }
     if (e.key === 'Escape' && drawing) { setDrawing(false); $('#btn-draw').focus(); }
     if (e.key === 'Escape' && measuring) { setMeasuring(false); $('#btn-measure').focus(); }

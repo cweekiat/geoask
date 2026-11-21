@@ -4,133 +4,106 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GeoAsk</title>
-<meta name="description" content="A sensor-agnostic platform for geospatial foundation models: satellite imagery analysis, change detection and pattern-of-life detection, asked in plain language.">
+<meta name="description" content="Ask a map questions in plain language and get answers measured from satellite imagery, anywhere on Earth, with any sensor and any geospatial foundation model.">
+<meta property="og:image" content="media/change.jpg">
 <style>
-  :root {
-    --bg: #fbfbfa; --fg: #1b1d1f; --muted: #5d636a; --line: #e3e5e8; --card: #ffffff;
-    --accent: #1f6fe5; --loss: #c2410c; --gain: #0f766e;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #0f1113; --fg: #e9eaec; --muted: #9aa1a8; --line: #24282c; --card: #16191c;
-      --accent: #5aa9ff; --loss: #ff7a45; --gain: #34d1c4;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #0f1113; --fg: #e9eaec; --muted: #9aa1a8; --line: #24282c; --card: #16191c;
-    --accent: #5aa9ff; --loss: #ff7a45; --gain: #34d1c4;
-  }
+  :root { color-scheme: dark; --bg: #070b12; --fg: #e8eef6; --muted: #a9b7c8; --dim: #8193a8; --line: rgba(148,172,204,.18);
+    --card: #0f1724; --accent: #5aa9ff; --btn: #1f6fe5; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg);
-    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; }
-  main { max-width: 960px; margin: 0 auto; padding: 48px 16px 80px; }
-  h1 { font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -0.02em; margin: 0 0 8px; }
-  h2 { font-size: 1.35rem; margin: 56px 0 12px; }
-  .lede { font-size: 1.15rem; color: var(--muted); max-width: 680px; margin: 0; }
-  .q { margin: 32px 0 0; padding: 14px 18px; border: 1px solid var(--line); border-radius: 14px;
-    background: var(--card); font-size: 1.05rem; }
-  .q b { color: var(--accent); }
-  .compare { position: relative; margin-top: 16px; border-radius: 14px; overflow: hidden;
-    border: 1px solid var(--line); aspect-ratio: 447 / 333; user-select: none; touch-action: none; }
-  .compare img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
-  .compare .top { clip-path: inset(0 calc(100% - var(--x, 50%)) 0 0); }
-  .handle { position: absolute; top: 0; bottom: 0; left: var(--x, 50%); width: 2px; background: #fff;
-    box-shadow: 0 0 0 1px rgba(0,0,0,.3); }
-  .tag { position: absolute; top: 10px; padding: 3px 9px; border-radius: 99px; font-size: .8rem;
-    background: rgba(0,0,0,.55); color: #fff; }
-  .tag.l { left: 10px; } .tag.r { right: 10px; }
-  .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 16px; }
-  .stat { padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
-  .stat .v { font-size: 1.6rem; font-weight: 650; font-variant-numeric: tabular-nums; }
-  .stat .k { color: var(--muted); font-size: .85rem; }
-  .loss { color: var(--loss); } .gain { color: var(--gain); }
-  figure { margin: 16px 0 0; }
-  figure.overlay { display: grid; }
-  figure.overlay img { grid-area: 1 / 1; }
-  figure.overlay figcaption { grid-area: 2 / 1; }
-  .cta { display: inline-block; margin-top: 20px; padding: 12px 18px; border-radius: 999px; background: #1f6fe5; color: #fff; text-decoration: none; font-weight: 600; }
-  figure img { width: 100%; border-radius: 14px; border: 1px solid var(--line); display: block; }
-  figcaption, .note { color: var(--muted); font-size: .875rem; margin-top: 8px; }
-  ul.points { padding-left: 1.1em; } ul.points li { margin: 6px 0; }
-  code { font: .9em ui-monospace, "SF Mono", Menlo, monospace; background: var(--card);
-    border: 1px solid var(--line); padding: 1px 5px; border-radius: 6px; }
-  pre { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px;
-    overflow-x: auto; font: .85rem/1.5 ui-monospace, "SF Mono", Menlo, monospace; }
-  footer { margin-top: 64px; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 48px 16px 72px; }
+  header h1 { font-size: clamp(2.2rem, 5vw, 3.2rem); letter-spacing: -0.02em; margin: 0 0 10px; }
+  .lede { font-size: 1.2rem; color: var(--muted); max-width: 720px; margin: 0; }
+  .ctas { display: flex; gap: 10px; flex-wrap: wrap; margin: 22px 0 0; }
+  .cta { display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 999px; background: var(--btn); color: #fff; text-decoration: none; font-weight: 600; }
+  .cta.ghost { background: transparent; border: 1px solid rgba(148,172,204,.34); color: var(--fg); }
+  .cta:focus-visible { outline: 2px solid #8cc2ff; outline-offset: 2px; }
+  video, .shot { width: 100%; display: block; border-radius: 14px; border: 1px solid var(--line); background: #000; }
+  .hero { margin-top: 32px; }
+  .caption { color: var(--dim); font-size: .9rem; margin: 8px 2px 0; }
+  h2 { font-size: 1.4rem; margin: 64px 0 18px; letter-spacing: -0.01em; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .feat h3 { font-size: 1.05rem; margin: 12px 0 4px; }
+  .feat p { margin: 0; color: var(--muted); font-size: .95rem; }
+  .feat b { color: var(--fg); font-weight: 600; }
+  .how { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 760px) { .how { grid-template-columns: 1fr; } }
+  .how div { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .how h3 { margin: 0 0 4px; font-size: 1rem; }
+  .how p { margin: 0; color: var(--muted); font-size: .92rem; }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; overflow-x: auto;
+    font: .88rem/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
+  footer { margin-top: 64px; color: var(--dim); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
   a { color: var(--accent); }
+  @media (prefers-reduced-motion: reduce) { video { display: none; } .poster { display: block !important; } }
+  .poster { display: none; }
 </style>
 </head>
 <body>
 <main>
-  <h1>GeoAsk</h1>
-  <p class="lede">A sensor-agnostic platform for geospatial foundation models: satellite imagery analysis, change detection, pattern-of-life detection and photo geolocation, asked in plain language. It works anywhere on Earth and runs on your own computer, with no API keys.</p>
+  <header>
+    <h1>GeoAsk</h1>
+    <p class="lede">Ask a map questions in plain language. Get answers measured from satellite imagery, anywhere on Earth, with any sensor and any geospatial foundation model.</p>
+    <div class="ctas"><a class="cta" href="app/">Open the Live Demo</a><a class="cta ghost" href="https://github.com/cweekiat/geoask">View on GitHub</a></div>
+  </header>
 
-  <p class="q">“How much vegetation did <b>Tengah</b> lose between 2019 and 2026?”</p>
+  <section class="hero" aria-label="Demo">
+    <video src="media/hero.mp4" autoplay muted loop playsinline poster="media/change.jpg" aria-label="Asking what changed at the Tesla Gigafactory Berlin; the changed patches appear, then a before and after slider"></video>
+    <img class="shot poster" src="media/change.jpg" alt="Before and after imagery at the Tesla Gigafactory Berlin">
+    <p class="caption">“What changed at the Tesla Gigafactory Berlin since 2019?” Clay compares every 80 m patch: 117 ha changed.</p>
+  </section>
 
-  <div class="compare" id="cmp" aria-label="Before and after comparison, drag to compare">
-    <img src="gallery/tengah/after.png" alt="Sentinel-2 true colour, Tengah, 25 March 2026">
-    <img class="top" src="gallery/tengah/before.png" alt="Sentinel-2 true colour, Tengah, 1 January 2019">
-    <div class="handle"></div>
-    <span class="tag l" id="d0">2019-01-01</span><span class="tag r" id="d1">2026-03-25</span>
+  <h2>What you can ask</h2>
+  <div class="grid">
+    <div class="feat">
+      <video src="media/locate.mp4" autoplay muted loop playsinline poster="media/locate.jpg" aria-label="Locate: Claude estimates where a street photo was taken"></video>
+      <img class="shot poster" src="media/locate.jpg" alt="Locate result for a street photo in Valparaíso">
+      <h3>Where was this photo taken?</h3>
+      <p>A Claude agent reads the clues and checks them against open map data, reference photos, satellite views and terrain. <b>Likely areas with confidence, never a pin, never people.</b></p>
+    </div>
+    <div class="feat">
+      <img class="shot" src="media/activity.jpg" alt="Vessels per radar pass over the Bay of Gibraltar">
+      <h3>How busy is this port?</h3>
+      <p>Vessels on every Sentinel-1 radar pass, day or night, through cloud. <b>Bay of Gibraltar: about 50 per pass</b>, unusual days flagged.</p>
+    </div>
+    <div class="feat">
+      <img class="shot" src="media/viewshed.jpg" alt="Viewshed from Gornergrat above Zermatt">
+      <h3>What can be seen from here?</h3>
+      <p>Viewshed and line of sight from the Copernicus 30 m elevation model. <b>From Gornergrat: 25% of the ground within 10 km.</b></p>
+    </div>
+    <div class="feat">
+      <img class="shot" src="media/terrain.jpg" alt="Terrain relief around Zermatt">
+      <h3>How steep is it?</h3>
+      <p>Elevation, slope and relief. <b>Zermatt: 1,437 to 4,540 m, mean slope 26°.</b></p>
+    </div>
+    <div class="feat">
+      <video src="media/sharpen.mp4" autoplay muted loop playsinline aria-label="A 10 m Sentinel-2 view of Sydney blended into a 2.5 m super-resolved view"></video>
+      <h3>A sharper look</h3>
+      <p>Sentinel-2 sharpened from 10 m to 2.5 m, constrained to agree with the real pixels. <b>For viewing only.</b></p>
+    </div>
+    <div class="feat">
+      <img class="shot" src="media/mapping.jpg" alt="MGRS grid, measure tool and point card above Zermatt">
+      <h3>Field mapping</h3>
+      <p>MGRS grid, coordinates in decimal, DMS, MGRS and UTM, distance and bearing in mils, point cards, hillshade and 3D.</p>
+    </div>
   </div>
-  <p class="note">Drag to compare. Sentinel-2 L2A at 10 m. These are the clearest dates in each year, ranked by clear pixels inside Tengah.</p>
 
-  <div class="row" id="stats"></div>
+  <h2>Why it’s different</h2>
+  <div class="how">
+    <div><h3>Measured, not generated</h3><p>Language models only choose the tool and write the answer. Every number comes from pixels, and each number in the answer is checked.</p></div>
+    <div><h3>Any sensor, any model</h3><p>Bands are found by wavelength, so a new satellite is a YAML file. Foundation models, detectors and super-resolution plug in through small interfaces.</p></div>
+    <div><h3>Free and local</h3><p>Open data streamed straight from public buckets, no API keys for the map tools, runs on a laptop. Only your area’s pixels are read.</p></div>
+  </div>
 
-  <figure class="overlay">
-    <img src="gallery/tengah/after.png" alt="">
-    <img src="gallery/tengah/delta.png" alt="Pixels where vegetation was lost (orange) or gained (teal), over the 2026 image">
-    <figcaption><span class="loss">Orange</span>: vegetation lost (forest cleared for the new town and roads). <span class="gain">Teal</span>: vegetation gained (landscaping on land that was bare in 2019). These are exactly the pixels counted in the totals above.</figcaption>
-  </figure>
-  <p><a class="cta" href="app/">Open the Investigator →</a></p>
+  <h2>Run it yourself</h2>
+<pre>git clone https://github.com/cweekiat/geoask && cd geoask
+uv venv && uv pip install -e ".[serve,locate]"
+geoask serve    # http://127.0.0.1:8787/app/</pre>
+  <p class="caption">macOS or Linux. Optional: Ollama with Qwen 2.5 7B for free-form questions, an Anthropic API key (pasted in the app) for Locate.</p>
 
-  <h2>What it does</h2>
-  <ul class="points">
-    <li><b>Change of any kind</b> with foundation-model embeddings (Clay v1.5), or targeted change in vegetation, water and built-up land.</li>
-    <li><b>Pattern of life at sea.</b> Vessels on every Sentinel-1 radar pass (day, night, through cloud), with SAHI-style slicing, a density map and unusually busy or quiet days flagged.</li>
-    <li><b>Terrain.</b> Elevation, slope, viewshed and line of sight from the Copernicus 30 m elevation model.</li>
-    <li><b>Mapping for field use.</b> MGRS grid, coordinates in decimal, DMS, MGRS and UTM, distance and bearing in degrees and mils, hillshade and 3D terrain.</li>
-    <li><b>Locate: where was this photo taken?</b> A Claude agent reads the clues in street, aerial or satellite photos, checks them against open map data, reference photos, satellite imagery and terrain, and returns likely areas with a confidence, never a pinpoint, and never anything about people.</li>
-    <li><b>Super-resolution for viewing.</b> 10 m to 2.5 m with SEN2SR, physically constrained and shown with a consistency map. Never used for measurement.</li>
-  </ul>
-
-  <h2>How it works</h2>
-  <ul class="points">
-    <li><b>Streams only what it needs.</b> Pixels for your area are read straight from Cloud-Optimized GeoTIFFs in open data buckets using HTTP range requests. No scenes are downloaded and no server is involved.</li>
-    <li><b>Works with any sensor.</b> Bands are looked up by wavelength, not by name. Any satellite with a red and a near-infrared band can answer a vegetation question, and a sensor without them gets a clear refusal, not a guess.</li>
-    <li><b>Any foundation model.</b> One encoder interface and registry: Clay v1.5 runs today, and Prithvi, DOFA, TerraMind, Galileo and Copernicus-FM are declared. Detectors and super-resolution models plug in the same way.</li>
-    <li><b>Numbers you can trust.</b> A local language model (Qwen 2.5 7B) only decides which tools to run. Deterministic code computes every number from native-resolution pixels, and every number in the written answer is checked against the measurements.</li>
-  </ul>
-
-  <h2>Try it</h2>
-<pre>uv venv && uv pip install -e ".[serve]"
-geoask serve        # http://127.0.0.1:8787/app/
-geoask activity --bbox 103.74 1.20 103.86 1.26 --window 2026-08-01/2026-11-20</pre>
-  <p class="note">Runs on Linux and macOS. The full plan is in <a href="https://github.com/cweekiat/geoask/blob/main/docs/PLAN.md">docs/PLAN.md</a>.</p>
-
-  <footer>Contains modified Copernicus Sentinel data, processed by GeoAsk. Sentinel-2 L2A via Element84 Earth Search on AWS Open Data; Sentinel-1 RTC via Microsoft Planetary Computer. Copernicus GLO-30 DEM © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA. Map data © OpenStreetMap contributors. Place boundaries are approximate.</footer>
+  <footer>Contains modified Copernicus Sentinel data, processed by GeoAsk. Copernicus GLO-30 DEM © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA. Map data © OpenStreetMap contributors. Sentinel-2 cloudless by EOX. Demo photo: Barcex, CC BY-SA 3.0, Wikimedia Commons.</footer>
 </main>
-<script>
-  const cmp = document.getElementById('cmp');
-  const set = (clientX) => {
-    const r = cmp.getBoundingClientRect();
-    const x = Math.min(Math.max((clientX - r.left) / r.width, 0), 1);
-    cmp.style.setProperty('--x', (x * 100).toFixed(1) + '%');
-  };
-  let drag = false;
-  cmp.addEventListener('pointerdown', e => { drag = true; cmp.setPointerCapture(e.pointerId); set(e.clientX); });
-  cmp.addEventListener('pointermove', e => drag && set(e.clientX));
-  cmp.addEventListener('pointerup', () => drag = false);
-
-  fetch('gallery/tengah/result.json').then(r => r.json()).then(d => {
-    const fmt = n => Math.round(n).toLocaleString();
-    document.getElementById('stats').innerHTML = [
-      ['loss', fmt(d.loss_ha) + ' ha', 'vegetation lost'],
-      ['gain', fmt(d.gain_ha) + ' ha', 'vegetation gained'],
-      ['', d.mean0.toFixed(2) + ' → ' + d.mean1.toFixed(2), 'mean NDVI'],
-      ['', Math.round(d.compared_fraction * 100) + '%', 'area clear on both dates'],
-    ].map(([c, v, k]) => `<div class="stat"><div class="v ${c}">${v}</div><div class="k">${k}</div></div>`).join('');
-  }).catch(() => {});
-</script>
 </body>
 </html>

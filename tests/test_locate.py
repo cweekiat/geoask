@@ -121,3 +121,28 @@ def test_agent_reports_refusal_and_missing_estimate(monkeypatch):
                        ([NS(type="text", text="Lisbon.")], "end_turn")])
     with pytest.raises(agent.LocateError, match="without submitting"):
         agent.locate([p], lambda e: None, client=fake)
+
+
+def test_elevation_tiles_merge_without_fake_zeros(monkeypatch):
+    """A box across two 1° DEM tiles: each tile covers half; nothing should read as 0 m."""
+    import numpy as np
+
+    from geoask.data.grid import grid_for
+    from geoask.tools import terrain
+
+    seen = []
+
+    def fake_read(url, grid, resampling, nodata=None):
+        seen.append(nodata)
+        a = np.full(grid.shape, np.nan, np.float32)
+        half = grid.width // 2
+        if "E007" in url:
+            a[:, :half] = 2000.0
+        else:
+            a[:, half:] = 3000.0
+        return a
+
+    monkeypatch.setattr(terrain, "read_to_grid", fake_read)
+    bb = (7.9, 45.9, 8.1, 46.0)
+    d = terrain.dem_on(grid_for(bb, 90), bb)
+    assert d.min() >= 2000 and all(v is not None for v in seen)

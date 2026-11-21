@@ -48,7 +48,9 @@ def dem_on(grid: Grid, bbox: aoi.BBox) -> np.ndarray:
     """DEM warped onto ``grid`` (metres). Missing (all-sea) tiles count as 0 m."""
     def read(url: str) -> np.ndarray | None:
         try:
-            return read_to_grid(url, grid, Resampling.bilinear)
+            # GLO-30 tiles declare no nodata, so pixels outside a tile would read as 0 m:
+            # an explicit fill value marks them as missing instead.
+            return read_to_grid(url, grid, Resampling.bilinear, nodata=-32767.0)
         except RasterioIOError:
             return None
 

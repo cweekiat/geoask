@@ -1,85 +1,85 @@
 {
- "id": "marina_bay_sr_2026-08-22",
+ "id": "sydney_opera_house_sr_2025-12-24",
  "tool": "super_resolve",
  "model": "sen2sr-lite",
  "licence": "CC0-1.0",
  "citation": "Aybar et al., SEN2SR (ESA OpenSR); SPAN backbone (Wan et al. 2024)",
  "display_only": true,
- "place": "marina bay",
+ "place": "Sydney Opera House",
  "place_bbox": [
-  103.85,
-  1.27,
-  103.87,
-  1.3
+  151.20971,
+  -33.86172,
+  151.22053,
+  -33.85268
  ],
  "place_bbox_approximate": false,
  "place_source": "named",
  "corners": [
   [
-   103.849929,
-   1.300014
+   151.209656,
+   -33.852469
   ],
   [
-   103.870061,
-   1.300023
+   151.220785,
+   -33.85263
   ],
   [
-   103.870074,
-   1.269992
+   151.220592,
+   -33.861915
   ],
   [
-   103.849943,
-   1.269983
+   151.209462,
+   -33.861754
   ]
  ],
  "grid": {
-  "crs": "EPSG:32648",
+  "crs": "EPSG:32756",
   "res_m": 10.0,
   "shape": [
-   332,
-   224
+   103,
+   103
   ]
  },
  "out_res_m": 2.5,
- "date": "2026-08-22",
- "date0": "2026-08-22",
- "date1": "2026-08-22",
+ "date": "2025-12-24",
+ "date0": "2025-12-24",
+ "date1": "2025-12-24",
  "clear_fraction": 1.0,
  "scenes": [
-  "S2C_48NUG_20260822_0_L2A"
+  "S2B_56HLH_20251224_0_L2A"
  ],
- "consistency_mean": 0.0018357939552515745,
- "consistency_p95": 0.005065544508397579,
+ "consistency_mean": 0.001316291163675487,
+ "consistency_p95": 0.004351820796728134,
  "images": {
   "before": "before.png",
   "after": "after.png",
   "delta": "delta.png"
  },
- "seconds": 35.1,
+ "seconds": 45.9,
  "demo": {
-  "question": "Show me a sharper image of Marina Bay",
+  "question": "Show me a sharper image of the Sydney Opera House",
   "plan": {
    "tool": "super_resolve",
    "args": {
-    "place": "marina bay",
+    "place": "Sydney Opera House",
     "bbox": [
-     103.85,
-     1.27,
-     103.87,
-     1.3
+     151.20971,
+     -33.86172,
+     151.22053,
+     -33.85268
     ],
     "window": "2025-11-21/2026-11-21",
     "model": "sen2sr-lite"
    },
-   "explanation": "Sharpen the clearest Sentinel-2 image of Marina Bay in 2025-11-21/2026-11-21 from 10 m to 2.5 m with SEN2SR, for viewing only (never measured).",
+   "explanation": "Sharpen the clearest image of Sydney Opera House from the last 12 months to 2.5 m (for viewing only).",
    "planner": "rule-based (demo replay)"
   },
   "steps": [
    "Loading sen2sr-lite",
-   "Finding the clearest image of Marina Bay, 2025-11-21 to 2026-11-21",
-   "Reading red, green, blue and near-infrared at 10 m for 2026-08-22",
-   "Super-resolving 224 \u00d7 332 px to 896 \u00d7 1328 px (2.5 m)"
+   "Finding the clearest image of Sydney Opera House, 2025-11-21 to 2026-11-21",
+   "Reading red, green, blue and near-infrared at 10 m for 2025-12-24",
+   "Super-resolving 103 \u00d7 103 px to 412 \u00d7 412 px (2.5 m)"
   ],
-  "answer": "Here is Marina Bay on 2026-08-22, sharpened from 10 m to 2.5 m with sen2sr-lite. It's for viewing only: the extra detail is the model's estimate, consistent with the real pixels but not measured."
+  "answer": "Here is Sydney Opera House on 2025-12-24, sharpened from 10 m to 2.5 m with sen2sr-lite. It's for viewing only: the extra detail is the model's estimate, consistent with the real pixels but not measured."
  }
 }
