@@ -1,8 +1,11 @@
-"""Areas of interest: any Singapore place name, or a box drawn on the map.
+"""Areas of interest: any place name on Earth, or a box drawn on the map.
 
-Resolution order: curated analysis areas (hand-sized to cover each development) → exact
-OpenStreetMap names from the bundled gazetteer (``data/sg_places.json``, built by
-``scripts/build_gazetteer.py``) → fuzzy matches, for typos.
+Resolution order, cheapest first:
+
+1. curated analysis areas (hand-sized to cover a whole development; the demo set is Singapore);
+2. bundled offline gazetteers (``data/*_places.json``, built by ``scripts/build_gazetteer.py``
+   for any region), exact names, then close matches for typos;
+3. the online geocoder (``geocode.py``: OpenStreetMap Nominatim, keyless, cached on disk).
 """
 
 from __future__ import annotations
@@ -15,10 +18,11 @@ from functools import cache
 from importlib import resources
 from pathlib import Path
 
+from . import geocode
+
 BBox = tuple[float, float, float, float]  # west, south, east, north (EPSG:4326)
 
 SINGAPORE: BBox = (103.59, 1.15, 104.10, 1.48)
-SINGAPORE_UTM = "EPSG:32648"  # WGS84 / UTM 48N
 MAX_KM2 = {"index_change": 250.0, "embedding_change": 80.0}  # keep answers interactive
 
 # Curated analysis areas: sized to the whole development, not OSM's point/label box.
@@ -40,7 +44,7 @@ class Place:
     name: str
     bbox: BBox
     approximate: bool = True
-    source: str = "curated"  # curated | osm | drawn
+    source: str = "curated"  # curated | osm | geocoder | drawn
 
     @property
     def area_km2(self) -> float:
@@ -49,16 +53,20 @@ class Place:
 
 @cache
 def gazetteer() -> dict[str, dict]:
-    for p in (Path(__file__).resolve().parents[2] / "data" / "sg_places.json",):
-        if p.exists():
-            raw = json.loads(p.read_text())
-            break
-    else:
+    """Every bundled offline gazetteer, merged (first file wins on duplicate names)."""
+    src = Path(__file__).resolve().parents[2] / "data"
+    files = sorted(src.glob("*_places.json")) if src.is_dir() else []
+    if not files:
         try:
-            raw = json.loads(resources.files("geoask").joinpath("_data/sg_places.json").read_text())
+            pkg = resources.files("geoask").joinpath("_data")
+            files = sorted(f for f in pkg.iterdir() if f.name.endswith("_places.json"))
         except (FileNotFoundError, ModuleNotFoundError):
-            raw = {"places": []}
-    return {p["name"].lower(): p for p in raw["places"]}
+            files = []
+    out: dict[str, dict] = {}
+    for f in files:
+        for p in json.loads(f.read_text())["places"]:
+            out.setdefault(p["name"].lower(), p)
+    return out
 
 
 def resolve(name: str) -> Place:
@@ -82,14 +90,24 @@ def resolve(name: str) -> Place:
     osm_score, osm = best(gz)
     if cur and cur_score >= 0.8 and cur_score >= osm_score - 0.05:  # typos favour curated areas
         return Place(cur, PLACES[cur])
+    if osm and osm_score >= 0.9:  # near-certain typo of a bundled name: no network needed
+        return Place(gz[osm]["name"], tuple(gz[osm]["bbox"]), True, "osm")
+    try:
+        hits = geocode.lookup(name, limit=1)
+    except geocode.GeocoderUnavailable:
+        hits = []
+    if hits:
+        h = hits[0]
+        return Place(h["short"], tuple(h["bbox"]), True, "geocoder")
     if osm and osm_score >= 0.82:
         return Place(gz[osm]["name"], tuple(gz[osm]["bbox"]), True, "osm")
-    raise KeyError(f"I couldn't find a place called {name!r} in Singapore. "
+    raise KeyError(f"I couldn't find a place called {name!r}. "
                    "Try another name, or draw a box on the map.")
 
 
-def search(q: str, limit: int = 8) -> list[Place]:
-    """Places whose name starts with / contains ``q`` (curated first), for the search box."""
+def search(q: str, limit: int = 8, online: bool = False) -> list[Place]:
+    """Places whose name starts with / contains ``q`` (curated first), for the search box.
+    ``online`` adds geocoder results; the app asks for that only when Enter is pressed."""
     q = q.strip().lower()
     out: list[Place] = []
     seen: set[str] = set()
@@ -108,23 +126,29 @@ def search(q: str, limit: int = 8) -> list[Place]:
             add(Place(gz[k]["name"], tuple(gz[k]["bbox"]), True, "osm"))
         if len(out) >= limit:
             break
-    return out[:limit]
+    if online and q:
+        try:
+            for h in geocode.lookup(q, limit=limit):
+                add(Place(h["name"], tuple(h["bbox"]), True, "geocoder"))
+        except geocode.GeocoderUnavailable:
+            pass
+    return out[: limit * 2 if online else limit]
 
 
-def from_bbox(bbox: BBox, name: str = "selected area") -> Place:
+def from_bbox(bbox: BBox, name: str = "selected area", source: str = "drawn") -> Place:
     w, s, e, n = bbox
     if not (w < e and s < n):
         raise ValueError("the drawn box is empty")
-    sw, ss, se, sn = SINGAPORE
-    if e < sw - 0.2 or w > se + 0.2 or n < ss - 0.2 or s > sn + 0.2:
-        raise ValueError("the drawn box is outside the Singapore region")
-    return Place(name, (round(w, 5), round(s, 5), round(e, 5), round(n, 5)), False, "drawn")
+    if s < -84 or n > 84 or w < -180 or e > 180:
+        raise ValueError("the drawn box must lie between 84° south and 84° north")
+    return Place(name, (round(w, 5), round(s, 5), round(e, 5), round(n, 5)), False, source)
 
 
 def place_for(place: str | None, bbox: BBox | None) -> Place:
     """A drawn box wins over a name; one of the two is required."""
     if bbox:
-        return from_bbox(tuple(bbox), place or "selected area")
+        # a named box (from the geocoder or a bundled list) keeps its name; a bare one was drawn
+        return from_bbox(tuple(bbox), place or "selected area", "named" if place else "drawn")
     if place:
         return resolve(place)
     raise KeyError("Name a place or draw a box on the map.")

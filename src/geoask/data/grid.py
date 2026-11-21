@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from rasterio.transform import Affine, from_origin
 from rasterio.warp import transform_bounds
 
-from ..aoi import SINGAPORE_UTM, BBox
+from ..aoi import BBox
 
 
 @dataclass(frozen=True)
@@ -46,8 +46,21 @@ class Grid:
         return f"{self.crs}|{t.a:.3f}|{t.c:.1f}|{t.f:.1f}|{self.width}x{self.height}"
 
 
-def grid_for(bbox: BBox, res_m: float, crs: str = SINGAPORE_UTM) -> Grid:
-    """Snap a lon/lat bbox to a grid of ``res_m`` pixels in ``crs`` (pixel edges on multiples of res)."""
+def utm_crs(bbox: BBox) -> str:
+    """WGS84 / UTM zone containing the box centre (EPSG:326zz north, 327zz south), so pixels
+    keep their true size anywhere on Earth. Norway/Svalbard zone exceptions are ignored: the
+    neighbouring zone is still accurate enough for a box this small."""
+    w, s, e, n = bbox
+    lon, lat = (w + e) / 2, (s + n) / 2
+    lon = (lon + 180) % 360 - 180
+    zone = min(int((lon + 180) // 6) + 1, 60)
+    return f"EPSG:{32600 + zone if lat >= 0 else 32700 + zone}"
+
+
+def grid_for(bbox: BBox, res_m: float, crs: str | None = None) -> Grid:
+    """Snap a lon/lat bbox to a grid of ``res_m`` pixels in ``crs`` (default: the box's own
+    UTM zone), with pixel edges on multiples of res."""
+    crs = crs or utm_crs(bbox)
     w, s, e, n = transform_bounds("EPSG:4326", crs, *bbox, densify_pts=21)
     w = math.floor(w / res_m) * res_m
     s = math.floor(s / res_m) * res_m

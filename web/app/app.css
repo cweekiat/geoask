@@ -123,6 +123,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .results[hidden] { display: none; }
 .results li { padding: 10px 12px; border-radius: var(--r-sm); cursor: pointer; display: flex; gap: 10px; align-items: center; }
 .results li[aria-selected="true"], .results li:hover { background: var(--accent-soft); }
+.results li.hint { color: var(--ink-3); font-size: 13px; cursor: default; }
+.results li.hint:hover { background: none; }
 .results .meta { color: var(--ink-3); font-size: 12px; margin-left: auto; font-family: var(--mono); }
 
 .mode-chip { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap;

@@ -39,8 +39,25 @@ def test_any_osm_place_and_drawn_box():
 
 
 def test_unknown_place_and_oversized_area_ask():
-    assert isinstance(P.plan("what changed in Paris?", TODAY), Clarify)
+    assert isinstance(P.plan("what changed in Atlantis?", TODAY), Clarify)
+    big = P.plan("what changed in Paris?", TODAY)  # found, but too big for Clay: show it, ask to draw
+    assert isinstance(big, Clarify) and big.bbox is not None and "Draw a smaller box" in big.message
     assert isinstance(P.plan("what changed in Singapore since 2019?", TODAY), Clarify)
+
+
+def test_anywhere_on_earth_via_geocoder():
+    p = P.plan("How much vegetation did Lisbon lose since 2019?", TODAY)
+    assert isinstance(p, Plan) and p.args["place"] == "Lisbon" and p.args["index"] == "ndvi"
+    assert p.args["bbox"] == [-9.16, 38.70, -9.12, 38.73]  # tools get the exact box
+    pl = aoi.place_for("Lisbon", p.args["bbox"])
+    assert pl.source == "named" and pl.name == "Lisbon"
+
+
+def test_drawn_box_anywhere():
+    p = P.plan("what is being built here?", TODAY, selection=(-46.70, -23.60, -46.68, -23.58))
+    assert isinstance(p, Plan) and p.tool == "embedding_change"
+    with pytest.raises(ValueError):
+        aoi.from_bbox((0, 85, 1, 86))
 
 
 def test_windows_clamp_and_order():

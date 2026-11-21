@@ -236,32 +236,43 @@
   const q = $('#q'), results = $('#results'), search = $('#search');
   let sel = -1, items = [];
   let found = {}, searchSeq = 0;
-  async function renderResults() {
+  // Bundled names as you type; the worldwide geocoder only on Enter (its usage policy forbids
+  // search-as-you-type, and one lookup per Enter keeps us well inside its 1 request/s limit).
+  let onlineTerm = null;
+  async function renderResults(online = false) {
     const term = q.value.trim().toLowerCase();
     if (live) {
       const my = ++searchSeq;
       try {
-        const rs = await (await fetch('/api/search?q=' + encodeURIComponent(term))).json();
+        const rs = await (await fetch(`/api/search?q=${encodeURIComponent(term)}${online ? '&online=true' : ''}`)).json();
         if (my !== searchSeq) return;
         found = Object.fromEntries(rs.map(r => [r.name, r.bbox]));
+        onlineTerm = online ? term : null;
       } catch { found = {}; }
     } else {
       found = Object.fromEntries(Object.entries(places).filter(([n]) => !term || n.includes(term)).slice(0, 8));
     }
     items = Object.keys(found);
-    results.innerHTML = items.map((n, i) => `<li role="option" id="opt-${i}" aria-selected="${i === sel}" data-name="${esc(n)}">${icon('pin', 'icon sm')}<span>${esc(titleCase(n))}</span><span class="meta">${approxKm2(found[n])} km²</span></li>`).join('')
-      || `<li role="option" aria-disabled="true">No match. Try another name, or draw an area.</li>`;
+    const hint = live && term && onlineTerm !== term
+      ? `<li role="option" aria-disabled="true" class="hint">Press Return to search the whole world</li>` : '';
+    const label = n => /,/.test(n) ? n : titleCase(n);  // geocoder names arrive already cased
+    results.innerHTML = (items.map((n, i) => `<li role="option" id="opt-${i}" aria-selected="${i === sel}" data-name="${esc(n)}">${icon('pin', 'icon sm')}<span>${esc(label(n))}</span><span class="meta">${approxKm2(found[n])} km²</span></li>`).join('') + hint)
+      || `<li role="option" aria-disabled="true">${live ? 'No match anywhere. Try another name, or draw an area.' : 'No match. Try another name, or draw an area.'}</li>`;
     results.hidden = false; search.setAttribute('aria-expanded', 'true');
     q.setAttribute('aria-activedescendant', sel >= 0 ? `opt-${sel}` : '');
   }
-  const approxKm2 = ([w, s, e, n]) => ((e - w) * 111.32 * (n - s) * 110.57).toFixed(1);
+  const approxKm2 = b => { const a = bboxKm2(b); return a >= 100 ? a.toFixed(0) : a.toFixed(1); };
   const closeResults = () => { results.hidden = true; search.setAttribute('aria-expanded', 'false'); sel = -1; };
   q.addEventListener('focus', renderResults);
   q.addEventListener('input', () => { sel = -1; renderResults(); });
   q.addEventListener('keydown', e => {
     if (e.key === 'ArrowDown') { sel = Math.min(sel + 1, items.length - 1); renderResults(); e.preventDefault(); }
     else if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); renderResults(); e.preventDefault(); }
-    else if (e.key === 'Enter') { const n = items[Math.max(sel, 0)]; if (n) { focusPlace(n); closeResults(); q.blur(); } }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (live && sel < 0 && onlineTerm !== q.value.trim().toLowerCase()) { renderResults(true); return; }
+      const n = items[Math.max(sel, 0)]; if (n) { focusPlace(n); closeResults(); q.blur(); }
+    }
     else if (e.key === 'Escape') { closeResults(); q.blur(); }
   });
   results.addEventListener('pointerdown', e => { const li = e.target.closest('li[data-name]'); if (li) { e.preventDefault(); focusPlace(li.dataset.name); closeResults(); q.blur(); } });
@@ -269,10 +280,11 @@
 
   function focusPlace(name) {
     const [w, s, e, n] = found[name] || places[name];
-    q.value = titleCase(name);
+    const short = name.split(',')[0];
+    q.value = /,/.test(name) ? short : titleCase(name);
     map.fitBounds([[w, s], [e, n]], { padding: pad(), duration: reduceMotion ? 0 : 1100, maxZoom: 15 });
     const ask = $('#ask');
-    if (!ask.value.trim()) { ask.value = `How much vegetation did ${titleCase(name)} lose since 2019?`; ask.dispatchEvent(new Event('input')); }
+    if (!ask.value.trim()) { ask.value = `How much vegetation did ${/,/.test(name) ? short : titleCase(name)} lose since 2019?`; ask.dispatchEvent(new Event('input')); }
   }
 
   // ---------- panel ----------
@@ -289,7 +301,7 @@
   function renderEmpty() {
     log.innerHTML = `<div class="empty">
       <h2>What would you like to investigate?</h2>
-      <p>Ask how an area of Singapore has changed. GeoAsk finds the clearest satellite images, measures the change and shows it on the map.</p>
+      <p>Ask how any place on Earth has changed. GeoAsk finds the clearest satellite images, measures the change and shows it on the map.</p>
       <div class="chips">${EXAMPLES.map(x => `<button class="chip" type="button">${esc(x)}</button>`).join('')}</div></div>`;
     log.querySelectorAll('.chip').forEach(b => b.onclick = () => ask(b.textContent));
   }
@@ -345,7 +357,11 @@
     }
     else if (ev.type === 'step') addStep(ctx, ev.text);
     else if (ev.type === 'result') showResult(ctx, ev.result, ev.result.base);
-    else if (ev.type === 'clarify') showClarify(ctx, ev.message, ev.suggestions);
+    else if (ev.type === 'clarify') {
+      showClarify(ctx, ev.message, ev.suggestions);
+      const b = ev.bbox;  // a place we found but can't analyse whole: show it so the user can draw part of it
+      if (b) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), duration: reduceMotion ? 0 : 1100, maxZoom: 15 });
+    }
     else if (ev.type === 'reply') showClarify(ctx, ev.message, ev.suggestions);
     else if (ev.type === 'answer') showAnswer(ctx, ev.text, ev.source);
     else if (ev.type === 'error') showError(ctx, ev.message, ev.hint);

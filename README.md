@@ -1,6 +1,6 @@
 # GeoAsk
 
-**Ask questions about Singapore in plain language and get answers computed from satellite imagery.**
+**Ask questions about any place on Earth in plain language and get answers computed from satellite imagery.**
 It works with any satellite sensor, uses imagery at about 10 m or sharper, runs locally, and needs
 no API keys.
 
@@ -35,8 +35,7 @@ ollama pull qwen2.5:7b  # optional: lets it understand free-form questions (free
 geoask serve            # → http://127.0.0.1:8787/app/
 ```
 
-Ask in your own words, about any of 660 named places in Singapore (from OpenStreetMap) or an area
-you **draw on the map**, e.g. *"What is being built here?"*, *"Has the forest near Tengah shrunk over
+Ask in your own words, about **any place on Earth** or an area you **draw on the map**, e.g. *"What is being built here?"*, *"Has the forest near Tengah shrunk over
 the last few years?"*, *"Did they build anything new at Changi Airport since 2018?"*
 
 - **Qwen 2.5 7B (via Ollama)** reads the question and chooses a tool with simple arguments (topic,

@@ -1,7 +1,7 @@
 [project]
 name = "geoask"
 version = "0.1.0"
-description = "Ask questions of satellite imagery. Sensor-agnostic, local-first, Singapore-focused."
+description = "Ask questions of satellite imagery. Sensor-agnostic, local-first, works anywhere on Earth."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

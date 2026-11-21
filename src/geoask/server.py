@@ -67,9 +67,10 @@ def create_app() -> FastAPI:
         return [{"name": k, "bbox": v, "approximate": True} for k, v in aoi.PLACES.items()]
 
     @app.get("/api/search")
-    def search(q: str = ""):
+    def search(q: str = "", online: bool = False):
+        """Bundled names as you type; ``online=true`` (on Enter) adds the worldwide geocoder."""
         return [{"name": p.name, "bbox": p.bbox, "source": p.source,
-                 "km2": round(p.area_km2, 1)} for p in aoi.search(q)]
+                 "km2": round(p.area_km2, 1)} for p in aoi.search(q, online=online)]
 
     @app.get("/api/models")
     def models():
@@ -89,7 +90,8 @@ def create_app() -> FastAPI:
             yield emit("step", text=f"Reading the question ({p.name})")
             out = p.plan(body.question, selection=tuple(body.bbox) if body.bbox else None)
             if isinstance(out, Clarify):
-                yield emit("clarify", message=out.message, suggestions=out.suggestions)
+                yield emit("clarify", message=out.message, suggestions=out.suggestions,
+                           bbox=out.bbox)
                 return
             if isinstance(out, Reply):
                 yield emit("reply", message=out.message, planner=out.planner,

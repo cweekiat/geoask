@@ -1,17 +1,24 @@
-"""Build data/sg_places.json: named places in Singapore with bounding boxes, from OpenStreetMap.
+"""Build an offline gazetteer, data/<region>_places.json: named places with bounding boxes, from
+OpenStreetMap. Optional: any place on Earth is also found online (geocode.py); a bundled list
+just makes a region's neighbourhoods, parks and estates instant and typo-tolerant offline.
 
-One-time build step (Overpass API); the app itself only reads the bundled file. Data © OpenStreetMap
+One-time build step (Overpass API); the app only reads the files. Data © OpenStreetMap
 contributors, ODbL.
 
-    python scripts/build_gazetteer.py
+    python scripts/build_gazetteer.py                                  # Singapore (default)
+    python scripts/build_gazetteer.py lisbon -9.25 38.68 -9.08 38.80   # region W S E N
 """
 
 import json
+import sys
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
-BBOX = (1.15, 103.59, 1.48, 104.10)  # S, W, N, E
+REGION = sys.argv[1] if len(sys.argv) > 1 else "singapore"
+_W, _S, _E, _N = (map(float, sys.argv[2:6]) if len(sys.argv) >= 6
+                  else (103.59, 1.15, 104.10, 1.48))
+BBOX = (_S, _W, _N, _E)  # Overpass order: S, W, N, E
 KINDS = {
     "place": "suburb|neighbourhood|quarter|island|islet|town|village|locality|city_block",
     "landuse": "residential|industrial|commercial|military|construction|port|reservoir|forest",
@@ -57,7 +64,7 @@ def main() -> None:
             places[key] = {"name": name, "kind": kind, "bbox": bbox, "_a": area}
     out = sorted(({k: v for k, v in p.items() if k != "_a"} for p in places.values()),
                  key=lambda p: p["name"].lower())
-    path = Path(__file__).resolve().parents[1] / "data" / "sg_places.json"
+    path = Path(__file__).resolve().parents[1] / "data" / f"{REGION}_places.json"
     path.write_text(json.dumps({"source": "© OpenStreetMap contributors (ODbL)",
                                 "places": out}, separators=(",", ":")))
     print(f"{len(out)} places → {path} ({path.stat().st_size / 1e3:.0f} kB)")

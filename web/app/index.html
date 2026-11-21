@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#070b12">
 <title>GeoAsk Investigator</title>
-<meta name="description" content="Investigate Singapore from satellite imagery: search places, scrub through yearly imagery, and ask questions answered from measured pixels.">
+<meta name="description" content="Investigate any place on Earth from satellite imagery: search places, scrub through yearly imagery, and ask questions answered from measured pixels.">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<div id="map" role="application" aria-label="Map of Singapore"></div>
+<div id="map" role="application" aria-label="Map"></div>
 
 <!-- Top bar: brand + place search (Google Maps-style) -->
 <header class="topbar">
@@ -61,7 +61,7 @@
   <button class="btn-icon" id="btn-zin" title="Zoom in" aria-label="Zoom in"><svg class="icon" data-icon="plus"></svg></button>
   <button class="btn-icon" id="btn-zout" title="Zoom out" aria-label="Zoom out"><svg class="icon" data-icon="minus"></svg></button>
   <button class="btn-icon" id="btn-north" title="Reset north and tilt" aria-label="Reset north and tilt"><svg class="icon" data-icon="compass"></svg></button>
-  <button class="btn-icon" id="btn-home" title="Show all of Singapore" aria-label="Show all of Singapore"><svg class="icon" data-icon="home"></svg></button>
+  <button class="btn-icon" id="btn-home" title="Back to the starting view" aria-label="Back to the starting view"><svg class="icon" data-icon="home"></svg></button>
 </nav>
 
 <!-- Layers popover -->

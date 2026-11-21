@@ -35,6 +35,7 @@ class Plan:
 class Clarify:
     message: str
     suggestions: list[str] = field(default_factory=list)
+    bbox: aoi.BBox | None = None  # a place we found but can't analyse as is: the map flies there
 
 
 @dataclass
@@ -73,7 +74,7 @@ EXAMPLES = [
 ]
 
 CAPABILITIES = (
-    "I can measure how an area of Singapore has changed between two years from Sentinel-2 "
+    "I can measure how any area on Earth has changed between two years from Sentinel-2 "
     "satellite imagery: vegetation, water and coastline, built-up land, or change of any kind "
     "using the Clay foundation model. Name a place or draw a box on the map, and give the years."
 )
@@ -100,11 +101,14 @@ def windows(start_year: int | None, end_year: int | None, today: date) -> tuple[
 
 
 def make_plan(tool: str, place: aoi.Place, t0: str, t1: str, planner: str,
-              index: str | None = None) -> Plan:
-    aoi.check_size(place, tool)  # raises ValueError with a helpful message
+              index: str | None = None) -> Plan | Clarify:
+    try:
+        aoi.check_size(place, tool)
+    except ValueError as e:  # too big: show the place so the user can draw part of it
+        return Clarify(str(e), bbox=place.bbox)
     where = "the area you drew" if place.source == "drawn" else place.name.title()
     args = {"place": None if place.source == "drawn" else place.name, "t0": t0, "t1": t1}
-    if place.source == "drawn":
+    if place.source != "curated":  # tools get the exact box; names are only labels
         args["bbox"] = list(place.bbox)
     if tool == "embedding_change":
         args["model"] = "clay-v1.5"
@@ -115,13 +119,38 @@ def make_plan(tool: str, place: aoi.Place, t0: str, t1: str, planner: str,
     return Plan(tool, args, f"{why}: clearest date in {t0} vs clearest date in {t1}.", planner)
 
 
+_AFTER_PREP = re.compile(
+    r"\b(?:in|at|around|near|of|over|for)\s+(?:the\s+)?"
+    r"([A-Z][\w'.-]*(?:[ ,]+(?:[A-Z][\w'.-]*|de|da|do|del|di|la|le|of|on|upon|am|an))*)")
+
+
 def find_place_in_text(q: str) -> aoi.Place | None:
-    """Longest curated or OSM place name that appears in the question."""
+    """The place a question is about: the longest bundled name it contains, else a capitalised
+    name after "in / at / around…" looked up with the geocoder."""
     ql = f" {q.lower()} "
     names = [k for k in aoi.PLACES if k != "singapore"] + list(aoi.gazetteer())
     hits = [n for n in names if f" {n} " in ql or f" {n}?" in ql or f" {n}," in ql
             or f" {n}." in ql or f" {n}'" in ql]
-    return aoi.resolve(max(hits, key=len)) if hits else None
+    if hits:
+        return aoi.resolve(max(hits, key=len))
+    # Names after a preposition first, then any other capitalised run past the first word.
+    cands = [m.group(1) for m in _AFTER_PREP.finditer(q)]
+    cands += [m.group(0) for m in _CAPS.finditer(q) if m.start() > 0]
+    seen: set[str] = set()
+    for name in (c.strip(" ,.") for c in cands):
+        if not name or name.lower() in seen or name.lower() in _NOT_PLACES:
+            continue
+        seen.add(name.lower())
+        try:
+            return aoi.resolve(name)
+        except KeyError:
+            continue
+    return None
+
+
+_CAPS = re.compile(r"\b[A-Z][\w'.-]*(?: [A-Z][\w'.-]*)*")
+_NOT_PLACES = {"i", "ndvi", "ndwi", "mndwi", "ndbi", "clay", "sentinel", "what", "how", "has",
+               "did", "is", "are", "was", "the area", "this area", "here"}
 
 
 # ---- rule-based ----------------------------------------------------------------------------
@@ -144,10 +173,7 @@ class RuleBasedPlanner:
         t0, t1 = windows(years[0] if years else None,
                          years[-1] if len(years) > 1 else None, today)
         tool = "index_change" if index else "embedding_change"
-        try:
-            return make_plan(tool, place, t0, t1, self.name, index)
-        except ValueError as e:
-            return Clarify(str(e))
+        return make_plan(tool, place, t0, t1, self.name, index)
 
 
 # ---- LLM (Ollama) --------------------------------------------------------------------------
@@ -164,8 +190,9 @@ _TOOLS = [
                        "'anything unusual' (even at a reservoir, park or airport).",
         "parameters": {"type": "object", "required": ["topic"], "properties": {
             "topic": {"type": "string", "enum": ["vegetation", "water", "built-up", "any"]},
-            "place": {"type": "string", "description": "Place name in Singapore, exactly as "
-                      "the user wrote it. Leave empty if the user drew a box."},
+            "place": {"type": "string", "description": "Place name exactly as the user wrote "
+                      "it, anywhere in the world, with its city or country if the user gave "
+                      "one. Leave empty if the user drew a box."},
             "start_year": {"type": "integer", "description": "Earlier year, e.g. 2019"},
             "end_year": {"type": "integer", "description": "Later year; omit for 'now'"},
         }}}},
@@ -188,7 +215,7 @@ class LLMPlanner:
              selection: aoi.BBox | None = None) -> Outcome:
         today = today or date.today()
         system = (
-            "You are the planner for GeoAsk, which answers questions about places in Singapore "
+            "You are the planner for GeoAsk, which answers questions about any place on Earth "
             "by measuring Sentinel-2 satellite imagery. Always call exactly one tool. "
             f"Today is {today.isoformat()}. Imagery exists from 2016 onwards. "
             + ("The user has drawn a box on the map: that box is the area to analyse, "
