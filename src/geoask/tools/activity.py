@@ -119,17 +119,21 @@ def activity(place: str | None, window: str, out_root: Path, progress: Progress 
                 points.append({"date": d, "lon": round(lo, 6), "lat": round(la, 6),
                                "mgrs": mgrs.to_mgrs(lo, la, 4), "length_m": round(length),
                                "score": round(bx.score, 2)})
+        props = by_date[d][0].item.properties
+        orbit = f"{props.get('sat:orbit_state', '?')} {props.get('sat:relative_orbit', '?')}"
         series.append({"date": d, "count": len(boxes), "coverage": round(coverage, 2),
-                       "scenes": [s.id for s in by_date[d]]})
+                       "orbit": orbit, "scenes": [s.id for s in by_date[d]]})
     del inv
     pool.shutdown(wait=False)
     if not series:
         raise RuntimeError(f"No Sentinel-1 pass covered most of {where}.")
-    # Fixed targets (beacons, platforms, islets, moored hulks) show up in the same place on most
-    # passes. They aren't traffic: drop anything within 30 m of a spot seen on ≥ 80 % of passes.
-    fixed = fixed_targets(points, len(series))
+    # Persistent targets show up in the same spot on almost every pass: beacons, platforms,
+    # islets, or vessels laid up for months. They aren't traffic, so counts leave out anything
+    # within 30 m of a spot seen on ≥ 90 % of passes (reported separately).
+    fixed = fixed_targets(points, len(series), share=0.9)
     if fixed:
-        progress(f"Ignoring {len(fixed)} fixed target(s) seen in the same place on most passes")
+        progress(f"Setting aside {len(fixed)} persistent target(s) seen in the same spot on "
+                 "almost every pass")
         keep = [p for p in points if not _near_any(p, fixed)]
         for srow in series:
             srow["count"] = sum(1 for p in keep if p["date"] == srow["date"])
@@ -139,9 +143,20 @@ def activity(place: str | None, window: str, out_root: Path, progress: Progress 
             density[min(max(int(r), 0), grid.height - 1), min(max(int(c), 0), grid.width - 1)] += 1
         points = keep
     counts = [s["count"] for s in series]
-    med, sd, idx = robust_anomalies(counts)
+    med, sd, _ = robust_anomalies(counts)
+    # Each orbit sees the sea from its own side and angle, and at its own time of day, so a pass
+    # is only compared with passes from the same relative orbit (needs at least 4 of them).
+    idx: list[int] = []
+    for orbit in sorted({s["orbit"] for s in series}):
+        members = [i for i, s in enumerate(series) if s["orbit"] == orbit]
+        if len(members) >= 4:
+            omed, _, oidx = robust_anomalies([counts[i] for i in members])
+            for j in oidx:
+                series[members[j]]["baseline"] = omed
+            idx += [members[j] for j in oidx]
+    idx.sort()
     for i in idx:
-        series[i]["unusual"] = "busier" if counts[i] > med else "quieter"
+        series[i]["unusual"] = "busier" if counts[i] > series[i]["baseline"] else "quieter"
     rid = (f"{''.join(c if c.isalnum() else '_' for c in pl.name.lower())[:40]}_activity_"
            f"{series[0]['date']}_{series[-1]['date']}")
     out = Path(out_root) / rid
@@ -169,9 +184,13 @@ def activity(place: str | None, window: str, out_root: Path, progress: Progress 
         "passes": len(series), "series": series,
         "mean_count": float(np.mean(counts)), "median_count": med, "max_count": max(counts),
         "max_date": series[int(np.argmax(counts))]["date"], "robust_sd": sd,
-        "unusual": [{"date": series[i]["date"], "count": counts[i], "kind": series[i]["unusual"]}
+        "unusual": [{"date": series[i]["date"], "count": counts[i], "kind": series[i]["unusual"],
+                     "orbit": series[i]["orbit"], "orbit_median": series[i]["baseline"]}
                     for i in idx],
-        "detections": len(points), "fixed_targets": len(fixed),
+        "orbits": sorted({s["orbit"] for s in series}),
+        "detections": len(points), "persistent_targets": len(fixed),
+        "persistent": [{"lon": round(lo, 6), "lat": round(la, 6), "mgrs": mgrs.to_mgrs(lo, la, 4)}
+                       for lo, la in fixed],
         "images": {"overlay": "overlay.png", "points": "detections.geojson"},
         "seconds": round(time.time() - started, 1),
     }

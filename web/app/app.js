@@ -31,6 +31,11 @@
     select: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M10 4h4M10 20h4M4 10v4M20 10v4"/>',
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
     copy: '<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+    leaf: '<path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14Z"/><path d="M5 19 13 11"/>',
+    ship: '<path d="M4 15h16l-2.5 4.5h-11L4 15Z"/><path d="M7 15V9h10v6M12 9V4M9 6.5h6"/>',
+    mountain: '<path d="m3 19 6.5-11 4 6.5 2.5-3.5L21 19H3Z"/>',
+    eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/>',
+    sharpen: '<rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M4 12h16M12 4v16M8 4v16M16 4v16M4 8h16M4 16h16" opacity=".45"/>',
     ruler: '<path d="m3.5 15.5 12-12 5 5-12 12-5-5Z"/><path d="m7 12 2 2M10 9l2 2M13 6l2 2"/>',
     sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5"/>',
   };
@@ -58,6 +63,15 @@
     'How much new built-up land is there in Punggol since 2019?',
   ];
   const DEMO_BASE = '../gallery/tengah/';
+  // Same entries as /api/tools (src/geoask/agent/catalog.py); used when there's no server.
+  let TOOLS = [
+    { id: 'embedding_change', title: 'Any change', icon: 'sparkle', summary: 'The Clay foundation model compares every 80 m patch between two dates, so it finds construction, clearing or new water without choosing an index.', example: 'What changed in Tengah since 2019?', available: true },
+    { id: 'index_change', title: 'Vegetation, water, built-up', icon: 'leaf', summary: 'Spectral indices (NDVI, MNDWI, NDBI) measured in hectares lost and gained.', example: 'How much vegetation did Tengah lose between 2019 and 2026?', available: true },
+    { id: 'activity', title: 'Vessel activity', icon: 'ship', summary: 'Vessels on every Sentinel-1 radar pass (day, night, through cloud), unusual days flagged, with a density map.', example: 'How busy is the western anchorage with ships since August 2026?', available: true },
+    { id: 'terrain', title: 'Terrain', icon: 'mountain', summary: 'Elevation, slope and relief from the Copernicus 30 m elevation model.', example: 'How steep is the terrain around Bukit Timah?', available: true },
+    { id: 'viewshed', title: 'Viewshed', icon: 'eye', summary: 'What can be seen from a point, allowing for Earth curvature. Right-click the map for a point, or measure two points for line of sight.', example: 'What can a 10 m mast at 1.3546, 103.7764 see within 3 km?', available: true },
+    { id: 'super_resolve', title: 'Sharpened view', icon: 'sharpen', summary: 'Sentinel-2 sharpened from 10 m to 2.5 m (SEN2SR) for viewing, with a consistency map. Never used for measurement.', example: 'Show me a sharper image of Marina Bay', available: true },
+  ];
   let live = false, places = FALLBACK_PLACES, active = null, busy = false, selection = null;
 
   // ---------- map ----------
@@ -168,9 +182,9 @@
     map.getSource('sel')?.setData(boxFeature(selection));
     const chip = $('#selection');
     chip.hidden = !selection;
+    $('#quick').hidden = !selection;
     if (selection) {
       $('#sel-text').textContent = `Selected area · ${bboxKm2(selection).toFixed(1)} km²`;
-      if (!askBox.value.trim()) { askBox.value = 'What is being built here?'; askBox.dispatchEvent(new Event('input')); }
       askBox.focus();
     }
   }
@@ -183,6 +197,16 @@
     setSelection([cx - hw, cy - hh, cx + hw, cy + hh]); setDrawing(false);
   };
   $('#sel-clear').onclick = () => setSelection(null);
+  // Quick actions for a drawn area: one tap asks the question about the selection.
+  const QUICK = [
+    ['sparkle', 'Any change', 'What has changed here since 2019?'],
+    ['leaf', 'Vegetation', 'How much vegetation was lost here since 2019?'],
+    ['ship', 'Vessels', 'How busy is this area with ships over the last year?'],
+    ['mountain', 'Terrain', 'How steep is the terrain here?'],
+    ['sharpen', 'Sharpen', 'Show me a sharper image of this area'],
+  ];
+  $('#quick').innerHTML = QUICK.map(([ic, label, q]) => `<button class="qa" type="button" data-q="${esc(q)}">${icon(ic, 'icon sm')}${esc(label)}</button>`).join('');
+  $('#quick').querySelectorAll('.qa').forEach(b => b.onclick = () => { if (!busy) ask(b.dataset.q); });
   map.on('mousedown', e => { if (!drawing) return; drawStart = e.lngLat; e.preventDefault(); });
   map.on('touchstart', e => { if (!drawing || e.points.length !== 1) return; drawStart = e.lngLat; e.preventDefault(); });
   const dragTo = e => {
@@ -292,6 +316,7 @@
   $('#ov-mgrs').onchange = e => { vis('mgrs-line', e.target.checked); vis('mgrs-label', e.target.checked); refreshGrid(); };
   map.on('moveend', refreshGrid);
 
+  const setCollapsedSafe = c => $('#panel').dataset.collapsed === String(!c) && $(c ? '#collapse' : '#fab').click();
   // ---------- measure distance and bearing (WGS84 ellipsoid, Vincenty) ----------
   let measuring = false, mpts = [];
   const mhint = $('#measure-hint'), mout = $('#measure-out');
@@ -302,7 +327,7 @@
     if (mpts.length < 2) { mout.textContent = mpts.length ? 'Add another point.' : 'Click the map to add points.'; return; }
     let total = 0, leg;
     for (let i = 1; i < mpts.length; i++) { leg = Geo.inverse(...mpts[i - 1], ...mpts[i]); total += leg.m; }
-    const mils = Math.round(leg.bearing * 6400 / 360);
+    const mils = Math.round(leg.bearing * 6400 / 360) % 6400;
     mout.textContent = `Total ${Geo.fmtDist(total)} · last leg ${Geo.fmtDist(leg.m)} at ${leg.bearing.toFixed(1).padStart(5, '0')}° true (${mils} mils)`;
   }
   function setMeasuring(on) {
@@ -314,6 +339,38 @@
   $('#btn-measure').onclick = () => setMeasuring(!measuring);
   $('#measure-done').onclick = () => setMeasuring(false);
   $('#measure-undo').onclick = () => { mpts.pop(); renderMeasure(); };
+  // Line of sight along the last leg (terrain + buildings + trees from the 30 m surface model).
+  $('#measure-los').onclick = async () => {
+    if (mpts.length < 2) return toast('Add two points first.');
+    if (!live) return toast('Line of sight needs geoask serve (live mode).');
+    const [a, b] = mpts.slice(-2);
+    setCollapsedSafe(false); log.querySelector('.empty')?.remove();
+    const bot = document.createElement('div'); bot.className = 'msg-bot'; log.appendChild(bot);
+    bot.innerHTML = `<p class="method">Checking line of sight…</p>`;
+    try {
+      const r = await (await fetch(`/api/line-of-sight?lon1=${a[0]}&lat1=${a[1]}&lon2=${b[0]}&lat2=${b[1]}&h1=2&h2=2`)).json();
+      if (r.detail) throw new Error(typeof r.detail === 'string' ? r.detail : 'invalid points');
+      bot.innerHTML = ''; bot.appendChild(losCard(r));
+    } catch (e) { bot.innerHTML = `<div class="card error" role="alert"><h3>Couldn't check line of sight</h3><p>${esc(e.message)}</p></div>`; }
+    log.scrollTop = log.scrollHeight;
+  };
+  function losCard(r) {
+    const W = 320, H = 110, prof = r.profile, xs = prof.map(p => p[0]), zs = prof.map(p => p[1]);
+    const z0 = zs[0] + r.observer_h_m, z1 = zs[zs.length - 1] + r.target_h_m;
+    const lo = Math.min(...zs, z0, z1), hi = Math.max(...zs, z0, z1), X = x => x / r.distance_m * W, Y = z => H - 16 - (z - lo) / Math.max(hi - lo, 1) * (H - 26);
+    const ground = `M0,${H - 16} ` + prof.map(([x, z]) => `L${X(x).toFixed(1)},${Y(z).toFixed(1)}`).join(' ') + ` L${W},${H - 16} Z`;
+    const ob = r.first_obstruction;
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = `<h3>Line of sight · ${r.visible ? 'Clear' : 'Blocked'}</h3>
+      <div class="when">${esc(Geo.toMGRS(...r.from, 4))} → ${esc(Geo.toMGRS(...r.to, 4))} · ${esc(r.source)}</div>
+      <div class="stats"><div class="stat ${r.visible ? 'gain' : 'loss'}"><div class="v">${r.visible ? 'Visible' : 'Not visible'}</div><div class="k">${r.observer_h_m} m observer → ${r.target_h_m} m target</div></div>
+        <div class="stat"><div class="v">${Geo.fmtDist(r.distance_m)}</div><div class="k">Distance</div></div>
+        ${ob ? `<div class="stat"><div class="v">${Geo.fmtDist(ob.distance_m)}</div><div class="k">First obstruction (${ob.above_sightline_m.toFixed(0)} m above the sight line)</div></div>` : `<div class="stat"><div class="v">${r.min_clearance_m.toFixed(0)} m</div><div class="k">Smallest clearance</div></div>`}</div>
+      <svg class="spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="Elevation profile with the sight line"><path d="${ground}" fill="#2a3b55"/><line x1="0" y1="${Y(z0).toFixed(1)}" x2="${W}" y2="${Y(z1).toFixed(1)}" stroke="${r.visible ? '#34d1c4' : '#ff7a45'}" stroke-width="1.6" stroke-dasharray="4 3"/>${ob ? `<circle cx="${X(ob.distance_m).toFixed(1)}" cy="${Y(z0 + (z1 - z0) * ob.distance_m / r.distance_m + ob.above_sightline_m).toFixed(1)}" r="3.5" fill="#ff7a45"/>` : ''}<text x="0" y="${H - 2}" fill="#8193a8" font-size="10">0</text><text x="${W}" y="${H - 2}" fill="#8193a8" font-size="10" text-anchor="end">${Geo.fmtDist(r.distance_m)}</text></svg>
+      <p class="method">From the 30 m surface model, with Earth curvature and refraction. Buildings and trees count as solid; anything smaller than 30 m is missed.</p>`;
+    if (ob) map.getSource('pin')?.setData({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: ob.lonlat } });
+    return card;
+  }
   $('#measure-centre').onclick = () => { const c = map.getCenter(); mpts.push([c.lng, c.lat]); renderMeasure(); };
   map.on('click', e => { if (measuring) { mpts.push([e.lngLat.lng, e.lngLat.lat]); renderMeasure(); } });
 
@@ -324,7 +381,11 @@
     const rows = FORMATS.map(f => `<div class="pc-row"><span>${FORMAT_NAMES[f]}</span><code>${esc(Geo.format(lng, lat, f))}</code><button class="btn-icon sm" type="button" data-copy="${esc(Geo.format(lng, lat, f))}" aria-label="Copy ${FORMAT_NAMES[f]}">${icon('copy', 'icon sm')}</button></div>`).join('');
     popup?.remove();
     popup = new maplibregl.Popup({ className: 'point-card', maxWidth: '360px' }).setLngLat(lngLat)
-      .setHTML(`<div>${title ? `<div class="pc-title">${esc(title)}</div>` : ''}${rows}<div class="pc-row"><span>Elevation</span><code id="pc-elev">${live ? 'Looking up…' : 'Needs geoask serve'}</code></div></div>`).addTo(map);
+      .setHTML(`<div>${title ? `<div class="pc-title">${esc(title)}</div>` : ''}${rows}<div class="pc-row"><span>Elevation</span><code id="pc-elev">${live ? 'Looking up…' : 'Needs geoask serve'}</code></div>
+        <div class="pc-actions"><button class="btn sm" type="button" data-act="view">${icon('eye', 'icon sm')}Viewshed From Here</button><button class="btn sm" type="button" data-act="measure">${icon('ruler', 'icon sm')}Measure From Here</button></div></div>`).addTo(map);
+    const el = popup.getElement();
+    el.querySelector('[data-act=view]').onclick = () => { popup.remove(); setCollapsedSafe(false); ask(`What can be seen from ${lat.toFixed(5)}, ${lng.toFixed(5)} within 3 km?`); };
+    el.querySelector('[data-act=measure]').onclick = () => { popup.remove(); if (!measuring) setMeasuring(true); mpts = [[lng, lat]]; renderMeasure(); };
     popup.getElement().querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => {
       try { await navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); } catch { toast('Copy isn’t available here'); }
     });
@@ -460,11 +521,17 @@
 
   const log = $('#log');
   function renderEmpty() {
+    const card = t => `<div class="tool${t.available ? '' : ' off'}">
+        <div class="tool-h">${icon(t.icon, 'icon sm')}<b>${esc(t.title)}</b>${live ? '' : '<span class="badge">Replay</span>'}</div>
+        <p>${esc(t.summary)}</p>
+        ${t.available ? `<button class="chip" type="button" data-q="${esc(t.example)}">${esc(t.example)}</button>`
+          : `<p class="install">Not installed. Run <code>${esc(t.install)}</code></p>`}</div>`;
     log.innerHTML = `<div class="empty">
       <h2>What would you like to investigate?</h2>
-      <p>Ask how any place on Earth has changed. GeoAsk finds the clearest satellite images, measures the change and shows it on the map.</p>
-      <div class="chips">${EXAMPLES.map(x => `<button class="chip" type="button">${esc(x)}</button>`).join('')}</div></div>`;
-    log.querySelectorAll('.chip').forEach(b => b.onclick = () => ask(b.textContent));
+      <p>Ask in your own words about any place on Earth, an area you draw, or coordinates (lat/lon, UTM or MGRS). Try one of these:</p>
+      <div class="tools">${TOOLS.map(card).join('')}</div>
+      <p class="tip">Tips: draw a box ${icon('select', 'icon sm')} for quick actions on an area, right-click the map for a point card, and use ${icon('ruler', 'icon sm')} for distance, bearing and line of sight.</p></div>`;
+    log.querySelectorAll('.chip[data-q]').forEach(b => b.onclick = () => ask(b.dataset.q));
   }
 
   // composer
@@ -546,7 +613,7 @@
   }
   function showAnswer(ctx, text, source) {
     finishSteps(ctx);
-    const by = source.startsWith('template') ? `Fixed wording${source.includes('number check') ? ': the model’s wording failed the number check' : ''}` : `Written by ${source} on this computer from the measurements`;
+    const by = source.includes('recorded') ? 'Recorded answer from a live run (fixed wording)' : source.startsWith('template') ? `Fixed wording${source.includes('number check') ? ': the model’s wording failed the number check' : ''}` : `Written by ${source} on this computer from the measurements`;
     const el = document.createElement('div'); el.className = 'answer';
     el.innerHTML = `<p>${esc(text)}</p><div class="src">${icon('sparkle', 'icon sm')}${esc(by)}</div>`;
     const card = ctx.bot.querySelector('.card');
@@ -645,11 +712,11 @@
         <div class="stat fm"><div class="v">${Math.round(r.median_count)}</div><div class="k">Vessels on a typical pass</div></div>
         <div class="stat"><div class="v">${r.max_count}</div><div class="k">Busiest · ${esc(r.max_date)}</div></div>
         <div class="stat"><div class="v">${r.unusual.length}</div><div class="k">Unusual passes</div></div>
-        <div class="stat"><div class="v">${r.fixed_targets}</div><div class="k">Fixed targets ignored</div></div></div>
+        <div class="stat"><div class="v">${r.persistent_targets ?? r.fixed_targets ?? 0}</div><div class="k">Persistent targets set aside</div></div></div>
       ${chart}
-      <div class="legend"><span><i class="sw" style="background:#5aa9ff"></i>Vessels per pass</span><span><i class="sw" style="background:#ffc45c"></i>Unusual (beyond 3 robust SD)</span><span><i class="sw" style="background:#e8eef6;height:2px"></i>Typical</span></div>
+      <div class="legend"><span><i class="sw" style="background:#5aa9ff"></i>Vessels per pass</span><span><i class="sw" style="background:#ffc45c"></i>Unusual for its orbit (beyond 3 robust SD)</span><span><i class="sw" style="background:#e8eef6;height:2px"></i>Typical</span></div>
       <div class="actions"><button class="btn primary act-show" type="button">${icon('target', 'icon sm')}Show on Map</button></div>
-      <details><summary>Method and limits</summary><p class="method">Each pass is cut into 512 px slices with 20% overlap (SAHI-style), a CFAR detector finds radar-bright targets on open water, and boxes split by slice edges are merged. Targets seen in the same place on 80% of passes (beacons, platforms, islets) are ignored. Vessels under about 20–30 m are often missed, ships alongside piers merge with land, and nothing here says who a vessel is.</p></details>`;
+      <details><summary>Method and limits</summary><p class="method">Each pass is cut into 512 px slices with 20% overlap (SAHI-style), a CFAR detector finds radar-bright targets on open water, and boxes split by slice edges are merged. Targets in the same spot on 90% of passes (beacons, platforms, islets, or vessels laid up for months) are set aside from the counts. Each pass is judged against passes from the same orbit (${r.orbits ? r.orbits.length : 1} here), because each orbit sees the sea from its own side and time of day. Vessels under about 20–30 m are often missed, ships alongside piers merge with land, and nothing here says who a vessel is.</p></details>`;
     ctx.bot.appendChild(card);
     const show = async () => {
       clearResult();
@@ -750,7 +817,29 @@
 
   // ---------- demo mode (GitHub Pages: no server) ----------
   const sleep = ms => new Promise(r => setTimeout(r, reduceMotion ? 0 : ms));
+  // Demo replays for the tools that aren't change maps: each gallery entry stores the question,
+  // the plan, the progress steps, the result and the answer from a real Live run.
+  const DEMO_TOOL = [
+    [/\b(ships?|vessels?|boats?|anchorage|maritime|pattern of life|activity|busy)\b/i, 'activity'],
+    [/\b(viewshed|line of sight|visible from|can\b[^?]{0,60}\bsee|seen from|vantage)\b/i, 'viewshed'],
+    [/\b(elevation|terrain|slope|steep|altitude|hill|mountain|relief)\b/i, 'terrain'],
+    [/\b(sharpen|sharper|super[- ]?res\w*|enhance|high[- ]res\w*|higher[- ]res\w*|2\.5 ?m)\b/i, 'super_resolve'],
+  ];
+  async function askDemoTool(id, question, ctx) {
+    const base = `../gallery/${id}/`;
+    const r = await (await fetch(base + 'result.json')).json();
+    const d = r.demo;
+    if (d.question.toLowerCase() !== question.toLowerCase()) {
+      ctx.bot.insertAdjacentHTML('beforeend', `<p>This demo can't run new analyses, because GitHub Pages has no server. Here is a recorded run of a similar question: <i>${esc(d.question)}</i></p>`);
+    }
+    handle({ type: 'plan', ...d.plan }, ctx);
+    for (const s of d.steps) { addStep(ctx, s); log.scrollTop = log.scrollHeight; await sleep(380); }
+    showResult(ctx, r, base);
+    showAnswer(ctx, d.answer, 'template (recorded run)');
+  }
   async function askDemo(question, ctx) {
+    const tool = DEMO_TOOL.find(([re]) => re.test(question));
+    if (tool) return askDemoTool(tool[1], question, ctx);
     const named = Object.keys(places).find(p => question.toLowerCase().includes(p));
     if (named && named !== 'tengah') {
       ctx.bot.insertAdjacentHTML('beforeend', `<p>This demo can't run new analyses, because GitHub Pages has no server. Run GeoAsk on your Mac or Linux machine to ask about ${esc(titleCase(named))}:</p><div class="plan">uv pip install -e ".[serve]"<br>geoask serve</div><p>Here is a precomputed example instead.</p>`);
@@ -787,7 +876,8 @@
       setMode(true);
       const hj = await h.json();
       if (hj.llm) $('#disclosure span').textContent = `Questions are read by ${hj.llm}, running on this computer. Every number is measured from satellite and elevation data and checked before it’s shown.`;
-      try { EXAMPLES.splice(0, EXAMPLES.length, ...(await (await fetch('/api/examples')).json())); if (!log.querySelector('.msg-user')) renderEmpty(); } catch { /* keep defaults */ }
+      try { TOOLS = await (await fetch('/api/tools')).json(); } catch { /* keep the built-in list */ }
+      if (!log.querySelector('.msg-user')) renderEmpty();
       const ps = await (await fetch('/api/places')).json();
       places = Object.fromEntries(ps.filter(p => p.name !== 'singapore').map(p => [p.name, p.bbox]));
       map.getSource('areas')?.setData(areasGeoJSON());

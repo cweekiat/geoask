@@ -1,0 +1,278 @@
+{
+ "id": "western_anchorage_activity_2026-08-10_2026-11-15",
+ "tool": "activity",
+ "detector": "sar-vessel-cfar",
+ "sensor": "Sentinel-1 RTC (VV)",
+ "slicing": {
+  "size_px": 512,
+  "overlap": 0.2,
+  "merge": "greedy NMM, IoS 0.5"
+ },
+ "place": "western anchorage",
+ "place_bbox": [
+  103.74,
+  1.2,
+  103.86,
+  1.26
+ ],
+ "place_bbox_approximate": false,
+ "place_source": "named",
+ "corners": [
+  [
+   103.739947,
+   1.260072
+  ],
+  [
+   103.860013,
+   1.260128
+  ],
+  [
+   103.860038,
+   1.199976
+  ],
+  [
+   103.739976,
+   1.199923
+  ]
+ ],
+ "grid": {
+  "crs": "EPSG:32648",
+  "res_m": 10.0,
+  "shape": [
+   665,
+   1336
+  ]
+ },
+ "date0": "2026-08-10",
+ "date1": "2026-11-15",
+ "passes": 17,
+ "series": [
+  {
+   "date": "2026-08-10",
+   "count": 91,
+   "coverage": 1.0,
+   "orbit": "ascending 171",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20260810T112444_20260810T112509_004062_007671_rtc"
+   ]
+  },
+  {
+   "date": "2026-08-11",
+   "count": 17,
+   "coverage": 1.0,
+   "orbit": "descending 18",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20260811T224719_20260811T224744_004084_007731_rtc"
+   ]
+  },
+  {
+   "date": "2026-08-22",
+   "count": 89,
+   "coverage": 1.0,
+   "orbit": "ascending 171",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20260822T112444_20260822T112509_004237_007C8B_rtc"
+   ]
+  },
+  {
+   "date": "2026-08-23",
+   "count": 48,
+   "coverage": 1.0,
+   "orbit": "descending 18",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20260823T224720_20260823T224745_004259_007D53_rtc"
+   ]
+  },
+  {
+   "date": "2026-09-03",
+   "count": 72,
+   "coverage": 1.0,
+   "orbit": "ascending 171",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20260903T112445_20260903T112510_004412_0082B1_rtc"
+   ]
+  },
+  {
+   "date": "2026-09-04",
+   "count": 48,
+   "coverage": 1.0,
+   "orbit": "descending 18",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20260904T224720_20260904T224745_004434_008374_rtc"
+   ]
+  },
+  {
+   "date": "2026-09-15",
+   "count": 88,
+   "coverage": 1.0,
+   "orbit": "ascending 171",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20260915T112445_20260915T112510_004587_0088BA_rtc"
+   ]
+  },
+  {
+   "date": "2026-09-16",
+   "count": 85,
+   "coverage": 1.0,
+   "orbit": "descending 18",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20260916T224721_20260916T224746_004609_00897D_rtc"
+   ]
+  },
+  {
+   "date": "2026-09-27",
+   "count": 86,
+   "coverage": 1.0,
+   "orbit": "ascending 171",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20260927T112445_20260927T112510_004762_008EC4_rtc"
+   ]
+  },
+  {
+   "date": "2026-10-09",
+   "count": 116,
+   "coverage": 1.0,
+   "orbit": "ascending 171",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20261009T112445_20261009T112510_004937_0094E6_rtc"
+   ]
+  },
+  {
+   "date": "2026-10-10",
+   "count": 108,
+   "coverage": 1.0,
+   "orbit": "descending 18",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20261010T224721_20261010T224746_004959_0095AF_rtc"
+   ]
+  },
+  {
+   "date": "2026-10-21",
+   "count": 62,
+   "coverage": 1.0,
+   "orbit": "ascending 171",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20261021T112445_20261021T112510_005112_009AED_rtc"
+   ]
+  },
+  {
+   "date": "2026-10-22",
+   "count": 74,
+   "coverage": 1.0,
+   "orbit": "descending 18",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20261022T224721_20261022T224746_005134_009BB1_rtc"
+   ]
+  },
+  {
+   "date": "2026-11-02",
+   "count": 100,
+   "coverage": 1.0,
+   "orbit": "ascending 171",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20261102T112445_20261102T112510_005287_00A0EF_rtc"
+   ]
+  },
+  {
+   "date": "2026-11-03",
+   "count": 115,
+   "coverage": 1.0,
+   "orbit": "descending 18",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20261103T224720_20261103T224745_005309_00A1B2_rtc"
+   ]
+  },
+  {
+   "date": "2026-11-14",
+   "count": 96,
+   "coverage": 1.0,
+   "orbit": "ascending 171",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20261114T112444_20261114T112509_005462_00A6EC_rtc"
+   ]
+  },
+  {
+   "date": "2026-11-15",
+   "count": 91,
+   "coverage": 1.0,
+   "orbit": "descending 18",
+   "scenes": [
+    "S1D_IW_GRDH_1SDV_20261115T224720_20261115T224745_005484_00A7B0_rtc"
+   ]
+  }
+ ],
+ "mean_count": 81.52941176470588,
+ "median_count": 88.0,
+ "max_count": 116,
+ "max_date": "2026-10-09",
+ "robust_sd": 20.7564,
+ "unusual": [],
+ "orbits": [
+  "ascending 171",
+  "descending 18"
+ ],
+ "detections": 1386,
+ "persistent_targets": 3,
+ "persistent": [
+  {
+   "lon": 103.786474,
+   "lat": 1.215457,
+   "mgrs": "48N UG 6498 3437"
+  },
+  {
+   "lon": 103.759244,
+   "lat": 1.216077,
+   "mgrs": "48N UG 6195 3444"
+  },
+  {
+   "lon": 103.759604,
+   "lat": 1.216258,
+   "mgrs": "48N UG 6199 3446"
+  }
+ ],
+ "images": {
+  "overlay": "overlay.png",
+  "points": "detections.geojson"
+ },
+ "seconds": 127.7,
+ "demo": {
+  "question": "How busy is the western anchorage with ships since August 2026?",
+  "plan": {
+   "tool": "activity",
+   "args": {
+    "place": "western anchorage",
+    "bbox": [
+     103.74,
+     1.2,
+     103.86,
+     1.26
+    ],
+    "window": "2026-08-01/2026-11-21"
+   },
+   "explanation": "Count vessels on Sentinel-1 radar passes over Western Anchorage in 2026-08-01/2026-11-21 (SAHI-style slicing, CFAR detector), then flag unusually busy or quiet days.",
+   "planner": "rule-based (demo replay)"
+  },
+  "steps": [
+   "Searching Sentinel-1 radar passes over Western Anchorage, 2026-08-01 to 2026-11-21",
+   "Pass 1 of 17: 2026-08-10, detecting vessels in 512 px slices",
+   "Pass 2 of 17: 2026-08-11, detecting vessels in 512 px slices",
+   "Pass 3 of 17: 2026-08-22, detecting vessels in 512 px slices",
+   "Pass 4 of 17: 2026-08-23, detecting vessels in 512 px slices",
+   "Pass 5 of 17: 2026-09-03, detecting vessels in 512 px slices",
+   "Pass 6 of 17: 2026-09-04, detecting vessels in 512 px slices",
+   "Pass 7 of 17: 2026-09-15, detecting vessels in 512 px slices",
+   "Pass 8 of 17: 2026-09-16, detecting vessels in 512 px slices",
+   "Pass 9 of 17: 2026-09-27, detecting vessels in 512 px slices",
+   "Pass 10 of 17: 2026-10-09, detecting vessels in 512 px slices",
+   "Pass 11 of 17: 2026-10-10, detecting vessels in 512 px slices",
+   "Pass 12 of 17: 2026-10-21, detecting vessels in 512 px slices",
+   "Pass 13 of 17: 2026-10-22, detecting vessels in 512 px slices",
+   "Pass 14 of 17: 2026-11-02, detecting vessels in 512 px slices",
+   "Pass 15 of 17: 2026-11-03, detecting vessels in 512 px slices",
+   "Pass 16 of 17: 2026-11-14, detecting vessels in 512 px slices",
+   "Pass 17 of 17: 2026-11-15, detecting vessels in 512 px slices",
+   "Setting aside 3 persistent target(s) seen in the same spot on almost every pass"
+  ],
+  "answer": "Over 17 Sentinel-1 radar passes from 2026-08-10 to 2026-11-15, Western Anchorage typically had 88 vessels in view (busiest: 116 on 2026-10-09). Unusual days: no pass stood out. Small craft are missed, and radar can't tell who the vessels are."
+ }
+}

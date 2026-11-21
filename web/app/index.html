@@ -42,6 +42,7 @@
       <span id="sel-text">Selected area</span>
       <button class="btn-icon sel-x" id="sel-clear" type="button" aria-label="Clear the selected area"><svg class="icon sm" data-icon="x"></svg></button>
     </div>
+    <div class="quick" id="quick" role="group" aria-label="Quick actions for the selected area" hidden></div>
     <form id="ask-form">
       <label for="ask" class="sr-only">Ask a question about a place</label>
       <textarea id="ask" rows="1" placeholder="Ask about a place, an area or coordinates"></textarea>
@@ -69,7 +70,7 @@
 <div id="layers" class="popover glass-regular" role="dialog" aria-label="Layers" hidden>
   <h2>Base map</h2>
   <label class="opt"><input type="radio" name="base" value="s2" checked><span>Sentinel-2 yearly<span class="d">10 m cloud-free mosaic · EOX</span></span></label>
-  <label class="opt"><input type="radio" name="base" value="hires"><span>High-resolution imagery<span class="d">Sub-metre · Esri · display only</span></span></label>
+  <label class="opt"><input type="radio" name="base" value="hires"><span>High-resolution imagery<span class="d">Sub-metre · Esri · display only: licensed 8-bit RGB tiles of mixed dates, so nothing is measured on them</span></span></label>
   <label class="opt"><input type="radio" name="base" value="dark"><span>Map<span class="d">Streets and labels · OpenStreetMap</span></span></label>
   <h2>Overlays</h2>
   <label class="opt"><input type="checkbox" id="ov-labels" checked><span>Place labels</span></label>
@@ -97,6 +98,7 @@
   <span id="measure-out" aria-live="polite">Click the map to add points.</span>
   <button class="btn" id="measure-centre" type="button">Add Point at Centre</button>
   <button class="btn" id="measure-undo" type="button">Undo</button>
+  <button class="btn" id="measure-los" type="button">Line of Sight</button>
   <button class="btn" id="measure-done" type="button">Done</button>
 </div>
 <div class="toast glass-regular" id="toast" role="status" hidden></div>

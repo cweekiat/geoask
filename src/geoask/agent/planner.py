@@ -229,7 +229,7 @@ def activity_plan(place: aoi.Place, question: str, today: date, planner: str) ->
 
 _TERRAIN = re.compile(r"\b(elevation|terrain|slope|steep|altitude|how high|hill|mountain|"
                       r"relief|contour|height above sea)\b", re.IGNORECASE)
-_VISIBILITY = re.compile(r"\b(viewshed|line of sight|visible from|can (?:be )?see|seen from|"
+_VISIBILITY = re.compile(r"\b(viewshed|line of sight|visible from|can\b[^?]{0,60}\bsee|seen from|"
                          r"observation post|overlook|vantage)\b", re.IGNORECASE)
 
 

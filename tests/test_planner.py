@@ -76,3 +76,11 @@ def test_place_resolution_curated_osm_fuzzy_and_drawn():
         aoi.check_size(aoi.resolve("singapore"), "embedding_change")
     with pytest.raises(KeyError):
         aoi.resolve("Atlantis")
+
+
+def test_every_gallery_example_routes_to_its_tool():
+    from geoask.agent.catalog import TOOLS
+
+    for t in TOOLS:
+        out = P.plan(t["example"], TODAY)
+        assert isinstance(out, Plan) and out.tool == t["id"], (t["example"], out)

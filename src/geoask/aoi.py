@@ -37,6 +37,7 @@ PLACES: dict[str, BBox] = {
     "changi airport": (103.970, 1.330, 104.010, 1.400),
     "marina bay": (103.850, 1.270, 103.870, 1.300),
     "central catchment": (103.780, 1.340, 103.830, 1.400),
+    "western anchorage": (103.740, 1.200, 103.860, 1.260),  # Singapore Strait anchorages
 }
 
 

@@ -1,0 +1,78 @@
+{
+ "id": "bukit_timah_terrain_103.7727_1.3120_103.8087_1.3480",
+ "tool": "terrain",
+ "source": "Copernicus GLO-30 DEM",
+ "place": "Bukit Timah",
+ "place_bbox": [
+  103.7727,
+  1.312,
+  103.8087,
+  1.348
+ ],
+ "place_bbox_approximate": false,
+ "place_source": "named",
+ "corners": [
+  [
+   103.772617,
+   1.348098
+  ],
+  [
+   103.808745,
+   1.348116
+  ],
+  [
+   103.808763,
+   1.311754
+  ],
+  [
+   103.772635,
+   1.311736
+  ]
+ ],
+ "grid": {
+  "crs": "EPSG:32648",
+  "res_m": 30.0,
+  "shape": [
+   134,
+   134
+  ]
+ },
+ "elev_min_m": 4.540325164794922,
+ "elev_max_m": 95.36724090576172,
+ "elev_mean_m": 28.07044219970703,
+ "relief_m": 90.82691955566406,
+ "highest_point": [
+  103.778953,
+  1.347965
+ ],
+ "slope_mean_deg": 5.979949474334717,
+ "steep_ha": 57.15,
+ "very_steep_ha": 0.0,
+ "area_ha": 1616.04,
+ "images": {
+  "overlay": "overlay.png"
+ },
+ "seconds": 3.4,
+ "demo": {
+  "question": "How steep is the terrain around Bukit Timah?",
+  "plan": {
+   "tool": "terrain",
+   "args": {
+    "place": "Bukit Timah",
+    "bbox": [
+     103.7727,
+     1.312,
+     103.8087,
+     1.348
+    ]
+   },
+   "explanation": "Measure elevation and slope over Bukit Timah from the Copernicus 30 m elevation model.",
+   "planner": "rule-based (demo replay)"
+  },
+  "steps": [
+   "Reading the Copernicus GLO-30 DEM over Bukit Timah (1 tile(s))",
+   "Computing slope and relief"
+  ],
+  "answer": "Bukit Timah ranges from 5 m to 95 m (mean 28 m). Mean slope is 6\u00b0, and 57 ha is steeper than 15\u00b0. Heights include buildings and trees."
+ }
+}

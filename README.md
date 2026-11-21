@@ -10,8 +10,14 @@ exact scenes used. It works **anywhere on Earth**, with **any sensor** whose ban
 wavelength, and with **any geospatial foundation model** (GFM) that implements one small interface.
 It runs on a laptop with no API keys.
 
-**[Try the Investigator demo →](https://cweekiat.github.io/geoask/app/)** (Demo mode on GitHub
-Pages replays a precomputed answer; run `geoask serve` for live analysis.)
+**[Try the Investigator demo →](https://cweekiat.github.io/geoask/app/)** Demo mode on GitHub Pages
+replays a recorded live run for every tool (built with `scripts/build_gallery.py`); run
+`geoask serve` for live analysis.
+
+In the app: a **tool gallery** with one example per tool; **quick actions** (any change,
+vegetation, vessels, terrain, sharpen) when you draw an area; a **point card** on right-click
+(all coordinate formats, elevation, *Viewshed From Here*, *Measure From Here*); and **line of
+sight** with an elevation profile from the measure tool.
 
 > **The rule:** a language model chooses which tools to run; deterministic code computes every
 > number from native-resolution pixels. Every number in the written answer is checked against the
@@ -23,7 +29,7 @@ Pages replays a precomputed answer; run `geoask serve` for live analysis.)
 |---|---|---|
 | **Change of any kind** | Foundation-model embeddings compared patch by patch (Clay v1.5 today), Otsu threshold | Sentinel-2 L2A, 10 m |
 | **Targeted change** | Spectral indices: vegetation, water and coastline, built-up land | Sentinel-2 (or any sensor with the bands) |
-| **Pattern of life at sea** | Vessels on every radar pass (CFAR detector with SAHI-style slicing), robust anomaly flags, density map, fixed targets removed | Sentinel-1 RTC, 10 m, day/night, through cloud |
+| **Pattern of life at sea** | Vessels on every radar pass (CFAR detector with SAHI-style slicing), each pass judged against its own orbit, robust anomaly flags, density map, persistent targets set aside | Sentinel-1 RTC, 10 m, day/night, through cloud |
 | **Terrain** | Elevation, slope, relief; viewshed with Earth curvature and refraction; line of sight | Copernicus GLO-30 DEM |
 | **Super-resolution (display only)** | SEN2SR-Lite 10 m → 2.5 m, physically constrained, with a consistency map | Sentinel-2 RGB + NIR |
 | **Mapping** | MGRS grid (zones, 100 km, 10 km, 1 km), coordinates in decimal / DMS / MGRS / UTM, distance and bearing (true and mils), point cards with elevation, coordinate search, hillshade, 3D terrain and buildings | OpenStreetMap, AWS Terrain Tiles |

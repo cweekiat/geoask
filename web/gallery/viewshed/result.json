@@ -1,0 +1,74 @@
+{
+ "id": "viewshed_1.35460_103.77640_3000_10_2",
+ "tool": "viewshed",
+ "source": "Copernicus GLO-30 DEM",
+ "place": "viewshed",
+ "place_source": "point",
+ "observer": [
+  103.7764,
+  1.3546
+ ],
+ "place_bbox": [
+  103.74944313126234,
+  1.3274678665099033,
+  103.80335686873765,
+  1.3817321334900967
+ ],
+ "place_bbox_approximate": false,
+ "corners": [
+  [
+   103.749412,
+   1.381734
+  ],
+  [
+   103.803606,
+   1.381762
+  ],
+  [
+   103.803633,
+   1.327219
+  ],
+  [
+   103.74944,
+   1.327192
+  ]
+ ],
+ "grid": {
+  "crs": "EPSG:32648",
+  "res_m": 30.0,
+  "shape": [
+   201,
+   201
+  ]
+ },
+ "radius_m": 3000.0,
+ "observer_h_m": 10.0,
+ "target_h_m": 2.0,
+ "observer_elev_m": 173.56675720214844,
+ "visible_ha": 1588.86,
+ "area_ha": 2827.5299999999997,
+ "images": {
+  "overlay": "overlay.png"
+ },
+ "seconds": 0.0,
+ "demo": {
+  "question": "What can a 10 m mast at 1.3546, 103.7764 see within 3 km?",
+  "plan": {
+   "tool": "viewshed",
+   "args": {
+    "lon": 103.7764,
+    "lat": 1.3546,
+    "radius_m": 3000.0,
+    "observer_h": 10.0,
+    "target_h": 2.0
+   },
+   "explanation": "Work out what a 10 m observer at 48N UG 6387 4975 can see within 3 km, from the Copernicus 30 m elevation model (it includes buildings and trees).",
+   "planner": "rule-based (demo replay)"
+  },
+  "steps": [
+   "Reading the Copernicus GLO-30 DEM within 3 km",
+   "Tracing sight lines from a 10 m observer to 2 m targets"
+  ],
+  "answer": "A 10 m observer here can see about 1589 ha (56%) of the ground within 3 km. Buildings and trees in the 30 m elevation model block views; small obstacles are missed."
+ }
+}

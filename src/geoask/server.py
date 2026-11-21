@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from . import __version__, aoi, mgrs
 from .agent import answer, llm
+from .agent.catalog import catalog
 from .agent.planner import EXAMPLES, Clarify, Plan, Reply, default_planner
 from .models import ModelNotInstalled, list_models
 from .tools import activity, investigate, superres, terrain
@@ -84,6 +85,10 @@ def create_app() -> FastAPI:
     @app.get("/api/models")
     def models():
         return [asdict(s) | {"sensor_agnostic": s.sensor_agnostic} for s in list_models()]
+
+    @app.get("/api/tools")
+    def tools():
+        return catalog()
 
     @app.get("/api/examples")
     def examples():

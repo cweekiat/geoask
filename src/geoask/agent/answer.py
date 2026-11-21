@@ -36,7 +36,9 @@ def facts(r: dict) -> list[str]:
                f"Radar passes analysed: {r['passes']}, from {r['date0']} to {r['date1']}",
                f"Vessels per pass: typically {r['median_count']:.0f}, average {r['mean_count']:.0f}",
                f"Busiest pass: {r['max_date']} with {r['max_count']} vessels",
-               "Only vessels longer than about 20-30 m are reliably seen; their identity is unknown"]
+               "Only vessels longer than about 20-30 m are reliably seen; their identity is unknown",
+               (f"Persistent targets set aside (same spot on almost every pass): "
+               f"{r.get('persistent_targets', 0)}")]
         for u in r["unusual"]:
             out.append(f"Unusually {u['kind']} pass: {u['date']} with {u['count']} vessels")
         if not r["unusual"]:
