@@ -44,6 +44,7 @@ _INDEX_WORDS = [
 ]
 
 EXAMPLES = [
+    "What changed in Tengah since 2019?",
     "How much vegetation did Tengah lose between 2019 and 2026?",
     "How has the coastline at Tuas changed since 2018?",
     "How much new built-up land is there in Punggol since 2019?",
@@ -62,7 +63,7 @@ class RuleBasedPlanner:
             known = ", ".join(p.title() for p in aoi.PLACES if p != "singapore")
             return Clarify(f"Which area should I look at? I can currently analyse: {known}.",
                            EXAMPLES)
-        index = next((i for i, words in _INDEX_WORDS if any(w in q for w in words)), "ndvi")
+        index = next((i for i, words in _INDEX_WORDS if any(w in q for w in words)), None)
         years = sorted({int(y) for y in re.findall(r"\b(20[12]\d)\b", q)
                         if 2016 <= int(y) <= today.year})
         last12 = f"{(today - timedelta(days=365)).isoformat()}/{today.isoformat()}"
@@ -75,6 +76,14 @@ class RuleBasedPlanner:
         else:
             y0 = today.year - 5
             t0, t1 = f"{y0}-01-01/{y0}-12-31", last12
+        if index is None:  # no topic named: look for change of any kind with a foundation model
+            return Plan(
+                tool="embedding_change",
+                args={"place": place, "t0": t0, "t1": t1, "model": "clay-v1.5"},
+                explanation=f"Look for any kind of change over {place.title()} with the Clay "
+                            f"foundation model: clearest date in {t0} vs clearest date in {t1}.",
+                planner=self.name,
+            )
         why = {"ndvi": "vegetation (NDVI)", "mndwi": "water (MNDWI)",
                "ndbi": "built-up land (NDBI)"}[index]
         return Plan(

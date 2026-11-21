@@ -47,6 +47,7 @@
     'marina bay': [103.85, 1.27, 103.87, 1.3], 'central catchment': [103.78, 1.34, 103.83, 1.4],
   };
   const EXAMPLES = [
+    'What changed in Tengah since 2019?',
     'How much vegetation did Tengah lose between 2019 and 2026?',
     'How has the coastline at Tuas changed since 2018?',
     'How much new built-up land is there in Punggol since 2019?',
@@ -313,24 +314,36 @@
     finishSteps(ctx);
     const idx = r.index.toUpperCase();
     const sources = r.picks.map((p, i) => `<li>${i ? 'After' : 'Before'} ${esc(p.date)} · ${Math.round(p.clear * 100)}% clear<br>${p.scenes.map(s => `<a href="${itemUrl(s)}" target="_blank" rel="noopener">${esc(s)}</a>`).join('<br>')}</li>`).join('');
+    const fm = r.tool === 'embedding_change';
     const card = document.createElement('div'); card.className = 'card';
-    card.innerHTML = `
-      <h3>${esc(titleCase(r.label))} change · ${esc(titleCase(r.place))}</h3>
-      <div class="when">${esc(r.date0)} → ${esc(r.date1)} · ${esc(r.sensor)} · ${r.grid.res_m} m</div>
-      <div class="stats">
+    const stats = fm ? `
+        <div class="stat fm"><div class="v">${icon('target', 'icon sm')}${fmtHa(r.changed_ha)}</div><div class="k">Changed (any kind)</div></div>
+        <div class="stat"><div class="v">${r.patch_m} m</div><div class="k">Patch size</div></div>
+        <div class="stat"><div class="v">${r.threshold.toFixed(2)}</div><div class="k">Change threshold (Otsu)</div></div>
+        <div class="stat"><div class="v">${Math.round(r.compared_fraction * 100)}%</div><div class="k">Area clear on both dates</div></div>` : `
         <div class="stat loss"><div class="v">${icon('down', 'icon sm')}${fmtHa(r.loss_ha)}</div><div class="k">${esc(r.label)} lost</div></div>
         <div class="stat gain"><div class="v">${icon('up', 'icon sm')}${fmtHa(r.gain_ha)}</div><div class="k">${esc(r.label)} gained</div></div>
         <div class="stat"><div class="v">${r.mean0.toFixed(2)} → ${r.mean1.toFixed(2)}</div><div class="k">Mean ${idx}</div></div>
-        <div class="stat"><div class="v">${Math.round(r.compared_fraction * 100)}%</div><div class="k">Area clear on both dates</div></div>
+        <div class="stat"><div class="v">${Math.round(r.compared_fraction * 100)}%</div><div class="k">Area clear on both dates</div></div>`;
+    const legend = fm
+      ? `<span><i class="sw" style="background:linear-gradient(90deg,#5aa9ff,#fff)"></i>Changed: brighter means a bigger change</span>`
+      : `<span><i class="sw" style="background:#ff7a45"></i>Decrease (loss)</span><span><i class="sw" style="background:#34d1c4"></i>Increase (gain)</span>`;
+    const method = fm
+      ? `${esc(r.model)} embeds each 2.56 km chip on both dates. Every ${r.patch_m} m patch is compared by cosine distance, and patches above an Otsu threshold count as changed. This finds change of any kind (construction, clearing, new water) without choosing an index.`
+      : `${idx} is computed from native ${r.grid.res_m} m pixels on dates chosen by the most clear pixels inside the area. Loss counts pixels that crossed from a high to a low ${idx}.`;
+    card.innerHTML = `
+      <h3>${fm ? 'Any change' : esc(titleCase(r.label)) + ' change'} · ${esc(titleCase(r.place))}</h3>
+      <div class="when">${esc(r.date0)} → ${esc(r.date1)} · ${esc(fm ? r.model : r.sensor)} · ${r.grid.res_m} m</div>
+      <div class="stats">${stats}
       </div>
-      <div class="legend"><span><i class="sw" style="background:#ff7a45"></i>Decrease (loss)</span><span><i class="sw" style="background:#34d1c4"></i>Increase (gain)</span></div>
+      <div class="legend">${legend}</div>
       <div class="actions">
         <button class="btn primary act-show" type="button">${icon('target', 'icon sm')}Show on Map</button>
         <button class="btn act-compare" type="button">${icon('compare', 'icon sm')}Compare Before/After</button>
       </div>
       <details><summary>Sources and method</summary>
         <ul>${sources}</ul>
-        <p class="method">${idx} is computed from native ${r.grid.res_m} m pixels on dates chosen by the most clear pixels inside the area. Loss counts pixels that crossed from a high to a low ${idx}. ${r.place_bbox_approximate ? 'The area outline is approximate.' : ''}</p>
+        <p class="method">${method} ${r.place_bbox_approximate ? 'The area outline is approximate.' : ''}</p>
       </details>
       <div class="feedback"><span>Was this useful?</span>
         <button class="btn-icon fb" aria-label="Useful" aria-pressed="false">${icon('thumbup', 'icon sm')}</button>
@@ -377,13 +390,20 @@
     if (named && named !== 'tengah') {
       ctx.bot.insertAdjacentHTML('beforeend', `<p>This demo can't run new analyses, because GitHub Pages has no server. Run GeoAsk on your Mac or Linux machine to ask about ${esc(titleCase(named))}:</p><div class="plan">uv pip install -e ".[serve]"<br>geoask serve</div><p>Here is a precomputed example instead.</p>`);
     }
-    const r = await (await fetch(DEMO_BASE + 'result.json')).json();
-    showPlan(ctx, { tool: 'index_change', planner: 'rule-based (demo replay)', explanation: `Compare vegetation (NDVI) over Tengah: clearest date in 2019 vs clearest date in 2026.`,
-      args: { place: 'tengah', index: 'ndvi', t0: '2019-01-01/2019-12-31', t1: '2026-01-01/2026-11-20' } });
-    for (const s of ['Searching Sentinel-2 scenes over Tengah, 2019', 'Ranking 64 scenes by clear pixels inside Tengah', `Reading 4 bands at 10 m for ${r.date0} (100% clear)`, `Searching and ranking 2026 scenes`, `Reading 4 bands at 10 m for ${r.date1} (100% clear)`, 'Computing NDVI change']) {
+    // A topic word picks the NDVI example; an open "what changed" question picks the Clay one.
+    const topic = /vegetat|forest|green|tree|park|water|coast|built|construct/i.test(question);
+    const base = topic ? DEMO_BASE : '../gallery/tengah-clay/';
+    const r = await (await fetch(base + 'result.json')).json();
+    const t = { t0: '2019-01-01/2019-12-31', t1: '2026-01-01/2026-11-20' };
+    if (topic) showPlan(ctx, { tool: 'index_change', planner: 'rule-based (demo replay)', explanation: 'Compare vegetation (NDVI) over Tengah: clearest date in 2019 vs clearest date in 2026.', args: { place: 'tengah', index: 'ndvi', ...t } });
+    else showPlan(ctx, { tool: 'embedding_change', planner: 'rule-based (demo replay)', explanation: 'Look for any kind of change over Tengah with the Clay foundation model: clearest date in 2019 vs clearest date in 2026.', args: { place: 'tengah', model: 'clay-v1.5', ...t } });
+    const steps = topic
+      ? ['Searching Sentinel-2 scenes over Tengah, 2019', 'Ranking 64 scenes by clear pixels inside Tengah, then re-checking the best for haze', `Reading 4 bands at 10 m for ${r.date0}`, 'Searching and ranking 2026 scenes', `Reading 4 bands at 10 m for ${r.date1}`, 'Computing NDVI change']
+      : ['Loading Clay on this device', 'Finding the clearest before date over Tengah', `Reading 10 bands for ${r.date0}`, `Embedding ${r.date0} with clay-v1.5`, 'Finding the clearest after date', `Embedding ${r.date1} with clay-v1.5`, 'Comparing embeddings patch by patch'];
+    for (const s of steps) {
       addStep(ctx, s); log.scrollTop = log.scrollHeight; await sleep(450);
     }
-    showResult(ctx, r, DEMO_BASE);
+    showResult(ctx, r, base);
   }
 
   // ---------- boot ----------

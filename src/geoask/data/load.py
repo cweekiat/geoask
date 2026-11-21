@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import numpy as np
 from rasterio.enums import Resampling
@@ -24,6 +25,7 @@ class Stack:
     valid: np.ndarray  # bool: has data and isn't cloud/shadow
     scenes: list[str] = field(default_factory=list)
     sensor: str = ""
+    acquired: datetime | None = None
 
     @property
     def clear_fraction(self) -> float:
@@ -31,9 +33,13 @@ class Stack:
 
 
 def _band_for(scene: Scene, target: str) -> Band:
+    """``target`` is a wavelength name ("red"), a polarisation ("vv") or an exact band name."""
     p = scene.profile
     if p.modality == "sar":
         return p.polarization(target)
+    for b in p.bands:
+        if b.name == target:
+            return b
     return p.band_near(target)
 
 
@@ -79,4 +85,5 @@ def load_stack(scenes: list[Scene], targets: list[str], grid: Grid) -> Stack:
         valid=valid,
         scenes=[s.id for s in scenes],
         sensor=scenes[0].profile.id,
+        acquired=scenes[0].datetime,
     )

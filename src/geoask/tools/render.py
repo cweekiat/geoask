@@ -42,6 +42,24 @@ def change_png(loss: np.ndarray, gain: np.ndarray, path: Path) -> Path:
     return path
 
 
+def heat_png(dist: np.ndarray, changed: np.ndarray, path: Path) -> Path:
+    """Embedding-change overlay: patches above the threshold in a blue→white ramp by strength.
+
+    Only the pixels counted as changed are painted, so the map matches the reported hectares.
+    """
+    v = np.nan_to_num(dist, nan=0.0)
+    lo = np.nanpercentile(dist[changed], 5) if changed.any() else 0.0
+    hi = np.nanpercentile(dist[changed], 99) if changed.any() else 1.0
+    t = np.clip((v - lo) / max(hi - lo, 1e-6), 0, 1)
+    rgba = np.zeros((4, *dist.shape), np.uint8)
+    rgba[0] = (90 + 165 * t).astype(np.uint8)    # #5aa9ff → white
+    rgba[1] = (169 + 86 * t).astype(np.uint8)
+    rgba[2] = 255
+    rgba[3] = np.where(changed, 200, 0).astype(np.uint8)
+    _write_png(path, rgba)
+    return path
+
+
 def geotiff(arr: np.ndarray, stack: Stack, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(

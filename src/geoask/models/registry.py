@@ -33,8 +33,16 @@ def list_models() -> list[ModelSpec]:
     return [f.spec for f in _REGISTRY.values()]  # type: ignore[attr-defined]
 
 
-def get(model_id: str) -> GeoEncoder:
+_INSTANCES: dict[str, GeoEncoder] = {}
+
+
+def get(model_id: str, fresh: bool = False) -> GeoEncoder:
+    """Return the adapter for ``model_id``. Instances are shared so weights load once per process."""
     _ensure_loaded()
     if model_id not in _REGISTRY:
         raise KeyError(f"unknown model {model_id!r}; available: {', '.join(sorted(_REGISTRY))}")
-    return _REGISTRY[model_id]()
+    if fresh:
+        return _REGISTRY[model_id]()
+    if model_id not in _INSTANCES:
+        _INSTANCES[model_id] = _REGISTRY[model_id]()
+    return _INSTANCES[model_id]

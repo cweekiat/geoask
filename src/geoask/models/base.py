@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Literal
 
 import numpy as np
@@ -69,7 +70,7 @@ class ModelSpec:
 class ModelInput:
     """What a model receives: chips plus the metadata wavelength-conditioned models need."""
 
-    pixels: np.ndarray  # (N, C, H, W) float32, physical units (reflectance / gamma0)
+    pixels: np.ndarray  # (N, C, H, W) float32, physical units (reflectance / gamma0); NaN=missing
     wavelengths_um: np.ndarray  # (C,)
     gsd_m: float
     chip_bounds: list[tuple[float, float, float, float]]  # per chip, in grid CRS
@@ -77,6 +78,10 @@ class ModelInput:
     date: str
     valid_fraction: np.ndarray  # (N,) share of clear pixels in each chip
     band_names: list[str] = field(default_factory=list)
+    chip_origins: list[tuple[int, int]] = field(default_factory=list)  # (row, col) in the grid
+    grid_shape: tuple[int, int] = (0, 0)
+    sensor: str = ""
+    acquired: datetime | None = None
 
 
 @dataclass
@@ -91,6 +96,9 @@ class Embeddings:
     date: str
     valid_fraction: np.ndarray
     patches: np.ndarray | None = None  # (N, h, w, D) if the model gives patch tokens
+    chip_origins: list[tuple[int, int]] = field(default_factory=list)
+    grid_shape: tuple[int, int] = (0, 0)
+    chip_size: int = 0
 
     def cosine_to(self, other: Embeddings) -> np.ndarray:
         """Per-chip cosine distance to another date. Refuses to compare different models."""
@@ -104,10 +112,19 @@ class Embeddings:
         return 1.0 - (a * b).sum(axis=1)
 
 
+def _starts(n: int, chip: int) -> list[int]:
+    if n <= chip:
+        return [0]
+    s = list(range(0, n - chip + 1, chip))
+    if s[-1] != n - chip:
+        s.append(n - chip)  # last chip shifted inward so the edge is covered (overlaps)
+    return s
+
+
 def chip_windows(grid: Grid, chip: int) -> list[tuple[int, int]]:
-    """Top-left (row, col) of each full chip tiling the grid. Edges that don't fit are skipped."""
-    return [(r, c) for r in range(0, grid.height - chip + 1, chip)
-            for c in range(0, grid.width - chip + 1, chip)]
+    """Top-left (row, col) of chips covering the whole grid. Edge chips overlap their neighbour;
+    areas smaller than a chip get one chip padded with NaN (see ``GeoEncoder.prepare``)."""
+    return [(r, c) for r in _starts(grid.height, chip) for c in _starts(grid.width, chip)]
 
 
 class GeoEncoder(ABC):
@@ -144,15 +161,17 @@ class GeoEncoder(ABC):
     def prepare(self, stack: Stack, band_keys: list[str], wavelengths_um: list[float]) -> ModelInput:
         chip = self.spec.chip_size
         wins = chip_windows(stack.grid, chip)
-        if not wins:
-            raise ValueError(f"area is smaller than one {chip}×{chip} chip at {stack.grid.res} m")
         cube = np.stack([stack.bands[k] for k in band_keys])  # (C, H, W)
+        valid_px = stack.valid
+        ph, pw = max(0, chip - cube.shape[1]), max(0, chip - cube.shape[2])
+        if ph or pw:  # smaller than one chip: pad with NaN (adapters treat NaN as missing)
+            cube = np.pad(cube, ((0, 0), (0, ph), (0, pw)), constant_values=np.nan)
+            valid_px = np.pad(valid_px, ((0, ph), (0, pw)), constant_values=False)
         t = stack.grid.transform
         pixels, bounds, valid = [], [], []
         for r, c in wins:
-            px = cube[:, r:r + chip, c:c + chip]
-            pixels.append(np.nan_to_num(px, nan=0.0))
-            valid.append(float(stack.valid[r:r + chip, c:c + chip].mean()))
+            pixels.append(cube[:, r:r + chip, c:c + chip])  # NaN = missing / cloud
+            valid.append(float(valid_px[r:r + chip, c:c + chip].mean()))
             x0, y0 = t @ (c, r)
             x1, y1 = t @ (c + chip, r + chip)
             bounds.append((x0, y1, x1, y0))
@@ -165,6 +184,10 @@ class GeoEncoder(ABC):
             date=stack.date,
             valid_fraction=np.asarray(valid, np.float32),
             band_names=band_keys,
+            chip_origins=wins,
+            grid_shape=stack.grid.shape,
+            sensor=stack.sensor,
+            acquired=stack.acquired,
         )
 
     # ---- model -------------------------------------------------------------------------
@@ -178,7 +201,8 @@ class GeoEncoder(ABC):
     def embed(self, inputs: ModelInput) -> Embeddings:
         vec, patches = self._embed(inputs)
         return Embeddings(self.spec.id, self.version, vec.astype(np.float32), inputs.chip_bounds,
-                          inputs.crs, inputs.date, inputs.valid_fraction, patches)
+                          inputs.crs, inputs.date, inputs.valid_fraction, patches,
+                          inputs.chip_origins, inputs.grid_shape, self.spec.chip_size)
 
     def embed_stack(self, stack: Stack, profile: InstrumentProfile) -> Embeddings:
         keys = self.select_bands(profile)

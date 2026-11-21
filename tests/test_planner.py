@@ -25,3 +25,8 @@ def test_multiword_place_and_built_up():
 
 def test_unknown_place_asks():
     assert isinstance(P.plan("what changed in Paris?", TODAY), Clarify)
+
+
+def test_open_question_goes_to_foundation_model():
+    p = P.plan("What changed in Tengah since 2019?", TODAY)
+    assert p.tool == "embedding_change" and p.args["model"] == "clay-v1.5"

@@ -161,7 +161,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .steps li { display: flex; gap: 8px; align-items: flex-start; }
 .steps li .dot { width: 16px; height: 16px; flex: none; margin-top: 2px; }
 .steps li.done { color: var(--ink-3); }
-.spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent);
+.spinner { display: block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent);
   animation: spin .8s linear infinite; margin: 1px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -271,3 +271,4 @@ body:not(.panel-collapsed) .fab { display: none !important; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; scroll-behavior: auto !important; }
   .spinner { animation: none; border-top-color: var(--accent); }
 }
+.stat.fm .v { color: var(--accent); }

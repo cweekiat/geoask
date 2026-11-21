@@ -20,8 +20,9 @@ from pydantic import BaseModel
 
 from . import __version__, aoi
 from .agent.planner import EXAMPLES, Clarify, RuleBasedPlanner
-from .models import list_models
+from .models import ModelNotInstalled, list_models
 from .tools import investigate
+from .tools.embedding_change import embedding_change
 
 WEB = Path(__file__).resolve().parents[2] / "web"
 OUT = Path(os.environ.get("GEOASK_OUT", Path.home() / ".cache" / "geoask" / "results"))
@@ -66,7 +67,7 @@ def create_app() -> FastAPI:
             yield emit("plan", tool=plan.tool, args=plan.args, explanation=plan.explanation,
                        planner=plan.planner)
             try:
-                for kind, payload in _run(plan.args):
+                for kind, payload in _run(plan.tool, plan.args):
                     if kind == "step":
                         yield emit("step", text=payload)
                     else:
@@ -75,6 +76,10 @@ def create_app() -> FastAPI:
             except investigate.NoClearDate as e:
                 yield emit("error", message=str(e),
                            hint="Try a wider time range or a different year.")
+            except ModelNotInstalled as e:
+                yield emit("error", message=str(e),
+                           hint="Ask about vegetation, water or built-up land to use the "
+                                "spectral tools, which need no model.")
             except Exception as e:  # noqa: BLE001 - surface every failure to the user
                 yield emit("error", message=f"{type(e).__name__}: {e}",
                            hint="Check your internet connection, then try again.")
@@ -87,16 +92,21 @@ def create_app() -> FastAPI:
     return app
 
 
-def _run(args: dict):
+def _run(tool: str, args: dict):
     """Run the tool on a worker thread; yield ("step", msg)… then ("result", dict)."""
     q: queue.Queue = queue.Queue()
     box: dict = {}
 
     def work():
         try:
-            box["result"] = investigate.index_change(
-                args["place"], args["index"], args["t0"], args["t1"], OUT,
-                progress=lambda m: q.put(m))
+            if tool == "embedding_change":
+                box["result"] = embedding_change(
+                    args["place"], args["t0"], args["t1"], OUT, model=args["model"],
+                    progress=lambda m: q.put(m))
+            else:
+                box["result"] = investigate.index_change(
+                    args["place"], args["index"], args["t0"], args["t1"], OUT,
+                    progress=lambda m: q.put(m))
         except Exception as e:  # noqa: BLE001
             box["error"] = e
         finally:

@@ -42,7 +42,7 @@ def test_fixed_band_model_maps_by_wavelength_or_refuses():
 
 def test_planned_models_say_so():
     with pytest.raises(ModelNotInstalled):
-        get("clay-v1.5").load()
+        get("dofa").load()
 
 
 def test_embeddings_from_different_models_never_mix():

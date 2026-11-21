@@ -35,19 +35,6 @@ _HLS6 = (
 
 
 @register
-class Clay(_Planned):
-    spec = ModelSpec(
-        id="clay-v1.5", family="Clay",
-        description="MAE-pretrained ViT with a wavelength-conditioned patch embedding. "
-                    "Takes any bands plus pixel size, time and location.",
-        modalities=("optical", "sar"), bands="any", chip_size=256, patch_size=8,
-        license="Apache-2.0 (see model card)",
-        weights="made-with-clay/Clay", paper="https://clay-foundation.github.io/model/",
-    )
-    install_hint = "Next milestone: pip install 'geoask[ml]' then scripts/fetch_clay.py."
-
-
-@register
 class Prithvi(_Planned):
     spec = ModelSpec(
         id="prithvi-eo-2.0", family="Prithvi",
