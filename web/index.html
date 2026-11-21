@@ -8,17 +8,17 @@
 <style>
   :root {
     --bg: #fbfbfa; --fg: #1b1d1f; --muted: #5d636a; --line: #e3e5e8; --card: #ffffff;
-    --accent: #0a7d5a; --loss: #d0263b; --gain: #1f9d55;
+    --accent: #1f6fe5; --loss: #c2410c; --gain: #0f766e;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #0f1113; --fg: #e9eaec; --muted: #9aa1a8; --line: #24282c; --card: #16191c;
-      --accent: #3ccf9b; --loss: #ff5a6e; --gain: #4ad885;
+      --accent: #5aa9ff; --loss: #ff7a45; --gain: #34d1c4;
     }
   }
   :root[data-theme="dark"] {
     --bg: #0f1113; --fg: #e9eaec; --muted: #9aa1a8; --line: #24282c; --card: #16191c;
-    --accent: #3ccf9b; --loss: #ff5a6e; --gain: #4ad885;
+    --accent: #5aa9ff; --loss: #ff7a45; --gain: #34d1c4;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg);
@@ -45,6 +45,10 @@
   .stat .k { color: var(--muted); font-size: .85rem; }
   .loss { color: var(--loss); } .gain { color: var(--gain); }
   figure { margin: 16px 0 0; }
+  figure.overlay { display: grid; }
+  figure.overlay img { grid-area: 1 / 1; }
+  figure.overlay figcaption { grid-area: 2 / 1; }
+  .cta { display: inline-block; margin-top: 20px; padding: 12px 18px; border-radius: 999px; background: #1f6fe5; color: #fff; text-decoration: none; font-weight: 600; }
   figure img { width: 100%; border-radius: 14px; border: 1px solid var(--line); display: block; }
   figcaption, .note { color: var(--muted); font-size: .875rem; margin-top: 8px; }
   ul.points { padding-left: 1.1em; } ul.points li { margin: 6px 0; }
@@ -64,19 +68,21 @@
   <p class="q">“How much vegetation did <b>Tengah</b> lose between 2019 and 2026?”</p>
 
   <div class="compare" id="cmp" aria-label="Before and after comparison, drag to compare">
-    <img src="gallery/tengah/after_2026-03-25.png" alt="Sentinel-2 true colour, Tengah, 25 March 2026">
-    <img class="top" src="gallery/tengah/before_2019-12-27.png" alt="Sentinel-2 true colour, Tengah, 27 December 2019">
+    <img src="gallery/tengah/after.png" alt="Sentinel-2 true colour, Tengah, 25 March 2026">
+    <img class="top" src="gallery/tengah/before.png" alt="Sentinel-2 true colour, Tengah, 1 January 2019">
     <div class="handle"></div>
-    <span class="tag l" id="d0">2019-12-27</span><span class="tag r" id="d1">2026-03-25</span>
+    <span class="tag l" id="d0">2019-01-01</span><span class="tag r" id="d1">2026-03-25</span>
   </div>
   <p class="note">Drag to compare. Sentinel-2 L2A at 10 m. These are the clearest dates in each year, ranked by clear pixels inside Tengah.</p>
 
   <div class="row" id="stats"></div>
 
-  <figure>
-    <img src="gallery/tengah/delta_ndvi.png" alt="Map of NDVI change, red for vegetation loss and green for gain">
-    <figcaption>Change in NDVI (a vegetation index). <span class="loss">Red</span> = vegetation lost (forest cleared for the new town and roads). <span class="gain">Green</span> = vegetation gained (landscaping on land that was bare in 2019).</figcaption>
+  <figure class="overlay">
+    <img src="gallery/tengah/after.png" alt="">
+    <img src="gallery/tengah/delta.png" alt="Pixels where vegetation was lost (orange) or gained (teal), over the 2026 image">
+    <figcaption><span class="loss">Orange</span>: vegetation lost (forest cleared for the new town and roads). <span class="gain">Teal</span>: vegetation gained (landscaping on land that was bare in 2019). These are exactly the pixels counted in the totals above.</figcaption>
   </figure>
+  <p><a class="cta" href="app/">Open the Investigator →</a></p>
 
   <h2>How it works</h2>
   <ul class="points">

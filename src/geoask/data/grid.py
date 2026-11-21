@@ -31,6 +31,16 @@ class Grid:
     def shape(self) -> tuple[int, int]:
         return (self.height, self.width)
 
+    def corners_lonlat(self) -> list[list[float]]:
+        """Top-left, top-right, bottom-right, bottom-left in lon/lat (for map image overlays)."""
+        from rasterio.warp import transform
+
+        t = self.transform
+        xs, ys = zip(*(t @ (c, r) for c, r in
+                       ((0, 0), (self.width, 0), (self.width, self.height), (0, self.height))))
+        lons, lats = transform(self.crs, "EPSG:4326", list(xs), list(ys))
+        return [[round(lo, 6), round(la, 6)] for lo, la in zip(lons, lats)]
+
     def key(self) -> str:
         t = self.transform
         return f"{self.crs}|{t.a:.3f}|{t.c:.1f}|{t.f:.1f}|{self.width}x{self.height}"

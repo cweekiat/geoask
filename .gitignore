@@ -5,9 +5,9 @@ __pycache__/
 .ruff_cache/
 dist/
 build/
-models/
-cache/
-out/
+/models/
+/cache/
+/out/
 *.tif
 !tests/fixtures/*.tif
 .DS_Store

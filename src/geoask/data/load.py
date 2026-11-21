@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -54,10 +55,16 @@ def load_stack(scenes: list[Scene], targets: list[str], grid: Grid) -> Stack:
         fill = ok & ~valid
         if not fill.any():
             continue
+        bands = {t: _band_for(sc, t) for t in targets}
+        with ThreadPoolExecutor(max_workers=8) as ex:  # I/O bound; GDAL releases the GIL
+            hrefs = [sc.href(bands[t].asset) for t in targets]
+            reads = ex.map(read_to_grid, hrefs, [grid] * len(hrefs),
+                           [Resampling.bilinear] * len(hrefs), [1] * len(hrefs),
+                           [p.nodata] * len(hrefs))
+            raws = dict(zip(targets, reads))
         for t in targets:
-            b = _band_for(sc, t)
-            raw = read_to_grid(sc.href(b.asset), grid, Resampling.bilinear, nodata=p.nodata)
-            phys = raw * b.scale + b.offset
+            b = bands[t]
+            phys = raws[t] * b.scale + b.offset
             ok_t = ~np.isnan(phys)
             sel = fill & ok_t
             out[t][sel] = phys[sel]

@@ -53,9 +53,11 @@ class ChangeResult:
     scenes0: list[str]
     scenes1: list[str]
     delta: np.ndarray  # index1 - index0, NaN where not comparable
+    loss: np.ndarray  # bool: counted in loss_ha
+    gain: np.ndarray  # bool: counted in gain_ha
 
     def summary(self) -> dict:
-        d = {k: v for k, v in self.__dict__.items() if k != "delta"}
+        d = {k: v for k, v in self.__dict__.items() if k not in ("delta", "loss", "gain")}
         for k in ("mean0", "mean1", "loss_ha", "gain_ha", "compared_fraction", "area_ha"):
             d[k] = round(d[k], 3)
         return d
@@ -86,4 +88,6 @@ def change(s0: Stack, s1: Stack, name: str) -> ChangeResult:
         scenes0=s0.scenes,
         scenes1=s1.scenes,
         delta=delta,
+        loss=loss,
+        gain=gain,
     )

@@ -7,12 +7,15 @@ from __future__ import annotations
 
 import hashlib
 import os
+import threading
+import uuid
 from pathlib import Path
 
 import numpy as np
 
 DEFAULT_DIR = Path(os.environ.get("GEOASK_CACHE", Path.home() / ".cache" / "geoask"))
 DEFAULT_CAP_MB = int(os.environ.get("GEOASK_CACHE_MB", "500"))
+_evict_lock = threading.Lock()
 
 
 class WindowCache:
@@ -32,22 +35,33 @@ class WindowCache:
         return np.load(p, allow_pickle=False)
 
     def put(self, key: str, arr: np.ndarray) -> None:
+        """Thread-safe: unique temp file (not matched by the eviction glob), atomic rename."""
         p = self._path(key)
-        tmp = p.with_suffix(".tmp.npy")
-        np.save(tmp, arr, allow_pickle=False)
+        tmp = p.with_name(f"{p.stem}.{uuid.uuid4().hex}.part")
+        with open(tmp, "wb") as f:
+            np.save(f, arr, allow_pickle=False)
         tmp.replace(p)
-        self._evict()
+        with _evict_lock:
+            self._evict()
 
     def size_bytes(self) -> int:
         return sum(f.stat().st_size for f in self.root.glob("*.npy"))
 
     def _evict(self) -> None:
-        files = sorted(self.root.glob("*.npy"), key=lambda f: f.stat().st_mtime)
-        total = sum(f.stat().st_size for f in files)
-        while files and total > self.cap:
-            f = files.pop(0)
-            total -= f.stat().st_size
+        entries = []
+        for f in self.root.glob("*.npy"):
+            try:
+                st = f.stat()
+            except FileNotFoundError:  # removed by another process meanwhile
+                continue
+            entries.append((st.st_mtime, st.st_size, f))
+        entries.sort()
+        total = sum(e[1] for e in entries)
+        for _mtime, size, f in entries:
+            if total <= self.cap:
+                break
             f.unlink(missing_ok=True)
+            total -= size
 
     def clear(self) -> None:
         for f in self.root.glob("*.npy"):

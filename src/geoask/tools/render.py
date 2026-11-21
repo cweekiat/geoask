@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import warnings
+from pathlib import Path
 
 import numpy as np
 import rasterio
@@ -14,26 +13,32 @@ from ..data.load import Stack
 
 
 def true_color_png(stack: Stack, path: Path, gamma: float = 0.8) -> Path:
-    """Needs red/green/blue in the stack. Reflectance 0–0.25 stretched, gamma-brightened."""
+    """RGBA quicklook. Reflectance 0–0.25 stretched, gamma-brightened; masked pixels transparent."""
     rgb = []
     for t in ("red", "green", "blue"):
         b = stack.bands[t]
         b = np.power(np.clip(np.nan_to_num(b, nan=0) / 0.25, 0, 1), gamma)
         rgb.append((b * 255).astype(np.uint8))
-    _write_png(path, np.stack(rgb))
+    alpha = np.where(stack.valid, 255, 0).astype(np.uint8)  # cloud gaps are transparent
+    _write_png(path, np.stack([*rgb, alpha]))
     return path
 
 
-def diverging_png(delta: np.ndarray, path: Path, vmax: float = 0.5) -> Path:
-    """Red = decrease, green = increase, grey = no data."""
-    d = np.clip(np.nan_to_num(delta, nan=0) / vmax, -1, 1)
-    r = np.where(d < 0, 200 * -d + 55, 55 * (1 - d)).astype(np.uint8)
-    g = np.where(d > 0, 200 * d + 55, 55 * (1 + d)).astype(np.uint8)
-    b = np.full_like(r, 55)
-    nan = np.isnan(delta)
-    for c in (r, g, b):
-        c[nan] = 128
-    _write_png(path, np.stack([r, g, b]))
+LOSS_RGB = (255, 122, 69)  # warm orange: crossed from high to low index
+GAIN_RGB = (52, 209, 196)  # teal: crossed from low to high index
+
+
+def change_png(loss: np.ndarray, gain: np.ndarray, path: Path) -> Path:
+    """RGBA overlay of exactly the pixels counted in loss/gain hectares, so map and numbers agree.
+
+    Orange/teal is easier to tell apart than red/green; the UI also labels both in text.
+    """
+    rgba = np.zeros((4, *loss.shape), np.uint8)
+    for mask, rgb in ((loss, LOSS_RGB), (gain, GAIN_RGB)):
+        for i, c in enumerate(rgb):
+            rgba[i][mask] = c
+        rgba[3][mask] = 230
+    _write_png(path, rgba)
     return path
 
 
