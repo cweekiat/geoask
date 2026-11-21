@@ -18,7 +18,6 @@ import os
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from pathlib import Path
 
 from .. import geocode
 from . import sources
@@ -40,18 +39,10 @@ class LocateError(RuntimeError):
     pass
 
 
-def load_env(root: Path | None = None) -> None:
-    """Read KEY=VALUE lines from the repo's .env into the environment (existing vars win)."""
-    root = root or Path(__file__).resolve().parents[3]
-    f = root / ".env"
-    if not f.exists():
-        return
-    for line in f.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+def load_env() -> None:
+    from . import keys
+
+    keys.load_env()
 
 
 def available() -> bool:

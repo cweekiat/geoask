@@ -59,9 +59,12 @@ camera GPS shows its recorded location straight away, without AI. Details and th
 
 ```bash
 uv pip install -e ".[serve,locate]"
-cp .env.example .env          # then add ANTHROPIC_API_KEY=…
-geoask serve                  # open the Locate tab
+geoask serve                  # open the Locate tab and paste your Anthropic API key
 ```
+
+Pasting the key is all it takes: the app checks it with Anthropic, saves it to `.env` on this
+computer only (owner-readable, git-ignored) and never shows it again; Change Key and Remove Key
+sit under the privacy note. Setting `ANTHROPIC_API_KEY` in `.env` or the environment works too.
 
 A run costs roughly $0.03–0.20 with Sonnet 5.5 and a fraction of that with Haiku 5.5; the app
 shows tokens and an estimated cost as it runs.

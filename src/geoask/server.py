@@ -20,7 +20,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -35,6 +35,10 @@ from .tools.embedding_change import embedding_change
 
 WEB = Path(__file__).resolve().parents[2] / "web"
 OUT = Path(os.environ.get("GEOASK_OUT", Path.home() / ".cache" / "geoask" / "results"))
+
+
+class KeyIn(BaseModel):
+    key: str  # an Anthropic API key, pasted in the Locate tab
 
 
 class Ask(BaseModel):
@@ -148,11 +152,46 @@ def create_app() -> FastAPI:
     @app.get("/api/locate/status")
     def locate_status():
         from .geolocate import agent as la
+        from .geolocate import keys
 
-        return {"available": la.available(), "models": la.MODELS,
+        return {"available": la.available(), "key": keys.masked(), "models": la.MODELS,
                 "default": os.environ.get("GEOASK_LOCATE_MODEL", "sonnet"),
                 "mapillary": bool(os.environ.get("MAPILLARY_TOKEN")),
                 "max_photos": 5}
+
+    def same_origin(request: Request) -> None:
+        """Only this app may change the key: other sites' pages can't POST here from a browser
+        (their Origin differs), and only connections from this computer are accepted."""
+        origin = request.headers.get("origin")
+        host = request.headers.get("host", "")
+        if origin and origin.split("://", 1)[-1] != host:
+            raise HTTPException(403, "Requests from other sites can't change the key.")
+        client = request.client.host if request.client else ""
+        if client not in ("127.0.0.1", "::1", "localhost", "testclient"):
+            raise HTTPException(403, "The key can only be changed from this computer.")
+
+    @app.post("/api/locate/key")
+    def set_key(body: KeyIn, request: Request):
+        from .geolocate import keys
+
+        same_origin(request)
+        key = keys.clean(body.key)
+        if not keys.looks_valid(key):
+            raise HTTPException(400, "That doesn't look like an Anthropic API key. It starts with sk-ant-.")
+        try:
+            keys.verify(key)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        keys.save(key)
+        return {"ok": True, "key": keys.masked(key), "stored_in": str(keys.env_file())}
+
+    @app.delete("/api/locate/key")
+    def delete_key(request: Request):
+        from .geolocate import keys
+
+        same_origin(request)
+        keys.remove()
+        return {"ok": True}
 
     @app.post("/api/locate")
     async def locate(files: Annotated[list[UploadFile], File()],
@@ -182,7 +221,7 @@ def create_app() -> FastAPI:
                 yield emit("recorded", points=[{"index": p.index, **p.meta["gps"]} for p in gps])
             if not la.available():
                 yield emit("error", message="Locate needs an Anthropic API key.",
-                           hint="Create a .env file in the geoask folder with ANTHROPIC_API_KEY=… and restart geoask serve.")
+                           hint="Paste your key in the Locate tab to connect Claude.")
                 return
             q: queue.Queue = queue.Queue()
             box: dict = {}

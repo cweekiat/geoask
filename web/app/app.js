@@ -829,6 +829,7 @@
     document.body.classList.toggle('locate-mode', t === 'locate');  // the imagery timeline isn't used here
     try { localStorage.setItem('geoask.tab', t); } catch { /* ignore */ }
     if (t === 'locate' && !locLog.children.length) locEmpty();
+    if (t === 'locate' && live) refreshLocStatus().then(st => { if (st && !st.available && !locLog.querySelector('.key-card')) showKeyCard(); });
   }
   Object.entries(tabs).forEach(([k, b]) => {
     b.onclick = () => setTab(k);
@@ -920,11 +921,61 @@
     });
   }
 
+  // ---- API key: paste once, saved on this computer only. Pasting saves automatically. ----
+  let locStatus = null, pendingRun = null;
+  async function refreshLocStatus() {
+    if (!live) return null;
+    try { locStatus = await (await fetch('/api/locate/status')).json(); } catch { locStatus = null; }
+    const k = $('#loc-key');
+    if (k) k.innerHTML = locStatus?.available
+      ? `Claude key ${esc(locStatus.key || 'set')} saved on this computer. <button class="link" type="button" data-change>Change Key</button> · <button class="link" type="button" data-remove>Remove Key</button>`
+      : 'No Claude key yet.';
+    k?.querySelector('[data-change]')?.addEventListener('click', () => showKeyCard(true));
+    k?.querySelector('[data-remove]')?.addEventListener('click', async () => {
+      await fetch('/api/locate/key', { method: 'DELETE' }); await refreshLocStatus(); toast('Key removed from this computer.'); showKeyCard();
+    });
+    return locStatus;
+  }
+  function showKeyCard(changing = false) {
+    locLog.querySelector('.key-card')?.remove();
+    const el = document.createElement('div'); el.className = 'card key-card';
+    el.innerHTML = `<h3>${changing ? 'Change Claude Key' : 'Connect Claude'}</h3>
+      <p class="method">Locate uses Claude through your Anthropic API key. Paste it below: it’s checked with Anthropic, saved only on this computer, and never shown again. <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get a key</a></p>
+      <form class="key-form" autocomplete="off">
+        <label for="key-in" class="sr-only">Anthropic API key</label>
+        <input id="key-in" type="password" inputmode="text" spellcheck="false" autocomplete="off" placeholder="Paste key: sk-ant-…" aria-describedby="key-msg">
+        <button class="btn primary" type="submit">Connect</button>
+      </form>
+      <p class="key-msg" id="key-msg" role="status"></p>`;
+    locLog.prepend(el);
+    const input = el.querySelector('#key-in'), btn = el.querySelector('button[type=submit]'), msg = el.querySelector('#key-msg');
+    const submit = async () => {
+      const key = input.value.trim(); if (!key) { input.focus(); return; }
+      btn.disabled = true; btn.textContent = 'Checking…'; msg.className = 'key-msg'; msg.textContent = 'Checking the key with Anthropic…';
+      try {
+        const r = await fetch('/api/locate/key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.detail || `HTTP ${r.status}`);
+        input.value = '';
+        el.remove(); await refreshLocStatus();
+        toast(`Claude connected (${j.key}).`);
+        if (pendingRun) { const go = pendingRun; pendingRun = null; go(); }
+      } catch (e) {
+        msg.className = 'key-msg err'; msg.textContent = e.message; btn.disabled = false; btn.textContent = 'Connect'; input.focus(); input.select();
+      }
+    };
+    el.querySelector('form').onsubmit = e => { e.preventDefault(); submit(); };
+    // Minimal clicks: a paste that looks like a key is submitted straight away.
+    input.addEventListener('paste', () => setTimeout(() => { if (/sk-ant-/.test(input.value)) submit(); }, 0));
+    input.focus({ preventScroll: true });
+    locLog.scrollTop = 0;
+  }
+
   async function runLocate(extraNote = '') {
     if (!locFiles.length || locBusy) return;
     if (!live) { const el = locMsg(); el.innerHTML = `<p>Locate runs on your own computer with <code>geoask serve</code> and an Anthropic API key, so it can’t run on this demo page.</p><div class="plan">uv pip install -e ".[serve,locate]"<br>echo "ANTHROPIC_API_KEY=…" &gt; .env<br>geoask serve</div>`; return; }
-    const st = await (await fetch('/api/locate/status')).json().catch(() => ({}));
-    if (!st.available) { const el = locMsg(); el.innerHTML = `<div class="card error" role="alert"><h3>Locate needs an Anthropic API key</h3><p class="method">Create a file named <code>.env</code> in the geoask folder containing <code>ANTHROPIC_API_KEY=…</code> (see <code>.env.example</code>), then restart <code>geoask serve</code>.</p></div>`; return; }
+    const st = await refreshLocStatus();
+    if (!st?.available) { pendingRun = () => runLocate(extraNote); showKeyCard(); return; }
     if (!(await consentFirst())) return;
     locBusy = true; locGo.disabled = true; locGo.textContent = 'Locating…';
     const note = [$('#loc-note').value.trim(), extraNote].filter(Boolean).join('. ');
@@ -1087,6 +1138,7 @@
       const hj = await h.json();
       if (hj.llm) $('#disclosure span').textContent = `Questions are read by ${hj.llm}, running on this computer. Every number is measured from satellite and elevation data and checked before it’s shown.`;
       try { TOOLS = await (await fetch('/api/tools')).json(); } catch { /* keep the built-in list */ }
+      if (!$('#pane-locate').hidden) setTab('locate');  // live is known now: check the Claude key
       if (!log.querySelector('.msg-user')) renderEmpty();
       const ps = await (await fetch('/api/places')).json();
       places = Object.fromEntries(ps.filter(p => p.name !== 'singapore').map(p => [p.name, p.bbox]));

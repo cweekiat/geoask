@@ -418,3 +418,16 @@ body.drawing #map canvas { cursor: crosshair; }
 .loc-disc summary::-webkit-details-marker { display: none; }
 .loc-disc p { margin: 6px 0 0; }
 body.locate-mode #timeline { display: none !important; }
+
+/* ---------- Claude key card ---------- */
+.key-card { border-color: rgba(90,169,255,.45); }
+.key-card a { color: var(--accent); }
+.key-form { display: flex; gap: 8px; margin-top: 10px; }
+.key-form input { flex: 1; min-width: 0; background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: var(--r-md);
+  color: var(--ink); font: 14px var(--mono); padding: 10px 12px; min-height: 44px; }
+.key-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(90,169,255,.25); }
+.key-form .btn { min-height: 44px; }
+.key-msg { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); min-height: 18px; }
+.key-msg.err { color: #ff9b73; }
+button.link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; min-height: 24px; }
+button.link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
