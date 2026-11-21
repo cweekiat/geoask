@@ -9,6 +9,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv venv && uv pip install -e ".[dev,locate]"
+      - run: uv venv && uv pip install -e ".[dev,locate,serve]"
       - run: uv run ruff check src tests
       - run: uv run pytest -m "not network" -q
