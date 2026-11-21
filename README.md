@@ -4,7 +4,7 @@
 maps, satellite imagery and terrain, and answers with likely areas and a confidence. Then ask the
 map anything else: change over time, vessel traffic, line of sight, terrain.**
 
-[**Live demo →**](https://cweekiat.github.io/geoask/app/) · [Project page](https://cweekiat.github.io/geoask/) · runs on your computer · works with Claude, local Ollama models or any OpenAI-compatible model
+[**Live demo →**](https://cweekiat.github.io/geoask/app/) · [Project page](https://cweekiat.github.io/geoask/) · runs on your computer · works with Claude, local Ollama models or any OpenAI-compatible model · [More projects](https://cweekiat.github.io/)
 
 ![GeoAsk locating a street photo: the agent reads the clues and shows the most likely area over Valparaíso, Chile](web/media/locate.gif)
 
@@ -89,8 +89,6 @@ chat (text, photos, drawn box) ─▶ your model: Claude · Ollama · OpenAI-com
 - **Model-agnostic** at every layer: chat model, foundation model, detector, super-resolution and enhancer all plug in through small interfaces.
 - **Private by design**: photo metadata is read locally and shared only if you allow it; areas are never smaller than a few hundred metres; the agent won't help find people.
 - **Light on data**: only your area's pixels are streamed; caches are capped.
-
-Design notes: [docs/GEOLOCATE.md](docs/GEOLOCATE.md) · [docs/PLAN.md](docs/PLAN.md) · [docs/DESIGN.md](docs/DESIGN.md)
 
 ## Checks
 

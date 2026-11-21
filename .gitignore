@@ -19,3 +19,10 @@ DerivedData/
 .env.*
 !.env.example
 .geoask.json
+
+# Design and planning notes: kept local, not published
+docs/PLAN.md
+docs/DESIGN.md
+docs/GEOLOCATE.md
+CLAUDE.md
+.claude/

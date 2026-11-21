@@ -2,7 +2,7 @@
 
 Each one declares its spec now (inputs, bands by wavelength, chip/patch size, licence, weights), so
 the rest of GeoAsk — sensor checks, the model picker, embedding storage — already works with it.
-``_embed`` gets implemented model by model (Clay first; see docs/PLAN.md §6).
+``_embed`` gets implemented model by model.
 
 Spec values come from each model's paper/model card; ``embed_dim`` stays None until read from the
 checkpoint, rather than guessed. Weight and paper links are filled in (and checked) when each
