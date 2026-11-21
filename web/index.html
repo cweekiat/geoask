@@ -63,7 +63,7 @@
 <body>
 <main>
   <h1>GeoAsk</h1>
-  <p class="lede">A sensor-agnostic platform for geospatial foundation models: satellite imagery analysis, change detection and pattern-of-life detection, asked in plain language. It works anywhere on Earth and runs on your own computer, with no API keys.</p>
+  <p class="lede">A sensor-agnostic platform for geospatial foundation models: satellite imagery analysis, change detection, pattern-of-life detection and photo geolocation, asked in plain language. It works anywhere on Earth and runs on your own computer, with no API keys.</p>
 
   <p class="q">“How much vegetation did <b>Tengah</b> lose between 2019 and 2026?”</p>
 
@@ -90,6 +90,7 @@
     <li><b>Pattern of life at sea.</b> Vessels on every Sentinel-1 radar pass (day, night, through cloud), with SAHI-style slicing, a density map and unusually busy or quiet days flagged.</li>
     <li><b>Terrain.</b> Elevation, slope, viewshed and line of sight from the Copernicus 30 m elevation model.</li>
     <li><b>Mapping for field use.</b> MGRS grid, coordinates in decimal, DMS, MGRS and UTM, distance and bearing in degrees and mils, hillshade and 3D terrain.</li>
+    <li><b>Locate: where was this photo taken?</b> A Claude agent reads the clues in street, aerial or satellite photos, checks them against open map data, reference photos, satellite imagery and terrain, and returns likely areas with a confidence, never a pinpoint, and never anything about people.</li>
     <li><b>Super-resolution for viewing.</b> 10 m to 2.5 m with SEN2SR, physically constrained and shown with a consistency map. Never used for measurement.</li>
   </ul>
 

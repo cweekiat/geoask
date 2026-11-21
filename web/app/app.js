@@ -36,6 +36,7 @@
     mountain: '<path d="m3 19 6.5-11 4 6.5 2.5-3.5L21 19H3Z"/>',
     eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/>',
     sharpen: '<rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M4 12h16M12 4v16M8 4v16M16 4v16M4 8h16M4 16h16" opacity=".45"/>',
+    photo: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m4 17 5-4.5 3.5 3 3-2.5L20 17"/>',
     ruler: '<path d="m3.5 15.5 12-12 5 5-12 12-5-5Z"/><path d="m7 12 2 2M10 9l2 2M13 6l2 2"/>',
     sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5"/>',
   };
@@ -609,7 +610,7 @@
     ctx.steps.insertAdjacentHTML('beforeend', `<li><span class="dot"><span class="spinner" role="img" aria-label="In progress"></span></span><span>${esc(text)}…</span></li>`);
   }
   function finishSteps(ctx) {
-    ctx.steps?.querySelectorAll('li:not(.done)').forEach(li => { li.classList.add('done'); li.querySelector('.dot').innerHTML = icon('check', 'icon sm'); li.lastElementChild.textContent = li.lastElementChild.textContent.replace(/…$/, ''); });
+    ctx.steps?.querySelectorAll('li:not(.done)').forEach(li => { li.classList.add('done'); const d = li.querySelector('.dot'); if (d) d.innerHTML = icon('check', 'icon sm'); li.lastElementChild.textContent = li.lastElementChild.textContent.replace(/…$/, ''); });
   }
   function showAnswer(ctx, text, source) {
     finishSteps(ctx);
@@ -814,6 +815,215 @@
     const lons = r.corners.map(c => c[0]), lats = r.corners.map(c => c[1]);
     map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: pad(), duration: reduceMotion ? 0 : 1200 });
   }
+
+
+  // ---------- Locate: where was this photo taken? ----------
+  // A Claude agent (server side) reasons over the photos and checks ideas with open-data tools.
+  // HIG › Generative AI: disclose AI use and what is sent, ask once before sending, show specific
+  // progress, offer alternatives (ranked areas), let people refine ("Not Here", Try Again).
+  const tabs = { ask: $('#tab-ask'), locate: $('#tab-locate') };
+  function setTab(t) {
+    for (const [k, b] of Object.entries(tabs)) b.setAttribute('aria-selected', k === t);
+    $('#pane-ask').hidden = t !== 'ask'; $('#pane-locate').hidden = t !== 'locate';
+    $('#mode-sub').textContent = t === 'ask' ? 'answers from satellite pixels' : 'photo geolocation';
+    document.body.classList.toggle('locate-mode', t === 'locate');  // the imagery timeline isn't used here
+    try { localStorage.setItem('geoask.tab', t); } catch { /* ignore */ }
+    if (t === 'locate' && !locLog.children.length) locEmpty();
+  }
+  Object.entries(tabs).forEach(([k, b]) => {
+    b.onclick = () => setTab(k);
+    b.addEventListener('keydown', e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const o = k === 'ask' ? 'locate' : 'ask'; setTab(o); tabs[o].focus(); } });
+  });
+
+  const locLog = $('#loc-log'), locFiles = [], locGo = $('#loc-go');
+  let locModel = 'sonnet', locBusy = false, locLast = null;
+  const fileInput = $('#loc-file'), drop = $('#loc-drop');
+  function locEmpty() {
+    locLog.innerHTML = `<div class="empty">
+      <h2>Where was this photo taken?</h2>
+      <p>Add one or more photos of the same place: street views, travel photos, drone or satellite images. Claude reads the clues (signs, roads, plants, buildings, terrain, sun) and checks them against open map data, reference photos and satellite imagery.</p>
+      <div class="tool"><div class="tool-h">${icon('check', 'icon sm')}<b>Works best with</b></div><p>Outdoor scenes with roads, signs, buildings, coastlines or mountains; several photos of one place; aerial views with distinctive shapes.</p></div>
+      <div class="tool"><div class="tool-h">${icon('info', 'icon sm')}<b>What you get</b></div><p>Up to three areas on the map, each with a likelihood and the reasons behind it. Never an exact spot, and never anything about who is in a photo.</p></div>
+      ${live ? '' : `<p class="tip">Locate needs <code>geoask serve</code> with an Anthropic API key, so it can’t run on this demo page.</p>`}</div>`;
+  }
+  function renderThumbs() {
+    $('#loc-photos').innerHTML = locFiles.map((f, i) => `<div class="thumb"><img src="${f.url}" alt="Photo ${i + 1}: ${esc(f.file.name)}"><span class="n">${i + 1}</span><button type="button" data-i="${i}" aria-label="Remove photo ${i + 1}">${icon('x', 'icon')}</button></div>`).join('');
+    $('#loc-photos').querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { const [f] = locFiles.splice(+b.dataset.i, 1); URL.revokeObjectURL(f.url); renderThumbs(); });
+    locGo.disabled = locBusy || !locFiles.length;
+    $('#loc-drop b').textContent = locFiles.length ? 'Add More Photos' : 'Add Photos';
+    drop.classList.toggle('mini', locFiles.length > 0);  // give the results room once photos are in
+  }
+  function addFiles(list) {
+    const imgs = [...list].filter(f => f.type.startsWith('image/'));
+    const room = 5 - locFiles.length;
+    if (imgs.length > room) toast(room ? `Only ${room} more photo${room > 1 ? 's' : ''} can be added (5 at most).` : 'Up to 5 photos per run.');
+    imgs.slice(0, room).forEach(file => locFiles.push({ file, url: URL.createObjectURL(file) }));
+    renderThumbs();
+  }
+  fileInput.onchange = () => { addFiles(fileInput.files); fileInput.value = ''; };
+  const pane = $('#pane-locate');
+  ['dragenter', 'dragover'].forEach(ev => pane.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => pane.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  pane.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+  document.addEventListener('paste', e => { if (!$('#pane-locate').hidden && e.clipboardData?.files?.length) addFiles(e.clipboardData.files); });
+  document.querySelectorAll('[data-model]').forEach(b => b.onclick = () => {
+    locModel = b.dataset.model;
+    document.querySelectorAll('[data-model]').forEach(x => x.setAttribute('aria-checked', x === b));
+  });
+
+  // map layers for candidate areas and camera-recorded positions
+  const circle = (lon, lat, km, n = 72) => {
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const a = i / n * 2 * Math.PI;
+      pts.push([lon + km / (111.32 * Math.cos(lat * Math.PI / 180)) * Math.sin(a), lat + km / 110.57 * Math.cos(a)]);
+    }
+    return pts;
+  };
+  map.on('style.load', () => {
+    map.addSource('loc-areas', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: 'loc-fill', type: 'fill', source: 'loc-areas', paint: { 'fill-color': ['case', ['==', ['get', 'rank'], 1], '#5aa9ff', '#f5b84a'], 'fill-opacity': ['case', ['==', ['get', 'rank'], 1], 0.18, 0.08] } });
+    map.addLayer({ id: 'loc-line', type: 'line', source: 'loc-areas', paint: { 'line-color': ['case', ['==', ['get', 'rank'], 1], '#8cc2ff', '#f5b84a'], 'line-width': ['case', ['==', ['get', 'rank'], 1], 2.2, 1.4], 'line-dasharray': ['case', ['==', ['get', 'rank'], 1], ['literal', [1, 0]], ['literal', [3, 2]]] } });
+    map.addSource('loc-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: 'loc-label', type: 'symbol', source: 'loc-labels', layout: { 'text-field': ['get', 'title'], 'text-size': 13, 'text-font': ['Noto Sans Regular'], 'text-offset': [0, 1.4], 'text-anchor': 'top' },
+      paint: { 'text-color': '#e8eef6', 'text-halo-color': '#070b12', 'text-halo-width': 1.6 } });
+    map.addLayer({ id: 'loc-pt', type: 'circle', source: 'loc-labels', paint: { 'circle-radius': ['case', ['==', ['get', 'rank'], 1], 9, 7], 'circle-color': ['case', ['==', ['get', 'rank'], 1], '#1f6fe5', '#b07a17'], 'circle-stroke-color': '#e8eef6', 'circle-stroke-width': 1.5 } }, 'loc-label');
+    map.addLayer({ id: 'loc-num', type: 'symbol', source: 'loc-labels', layout: { 'text-field': ['to-string', ['get', 'rank']], 'text-size': 11, 'text-font': ['Noto Sans Regular'], 'text-allow-overlap': true }, paint: { 'text-color': '#fff' } });
+    map.addSource('loc-recorded', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: 'loc-recorded', type: 'circle', source: 'loc-recorded', paint: { 'circle-radius': 7, 'circle-color': '#f5b84a', 'circle-stroke-color': '#070b12', 'circle-stroke-width': 2 } });
+  });
+  function showAreas(areas) {
+    map.getSource('loc-areas')?.setData({ type: 'FeatureCollection', features: areas.map((a, i) => ({ type: 'Feature', properties: { rank: i + 1 }, geometry: { type: 'Polygon', coordinates: [circle(a.lon, a.lat, a.radius_km)] } })) });
+    map.getSource('loc-labels')?.setData({ type: 'FeatureCollection', features: areas.map((a, i) => ({ type: 'Feature', properties: { rank: i + 1, title: `${a.band} ${Math.round(a.confidence * 100)}%` }, geometry: { type: 'Point', coordinates: [a.lon, a.lat] } })) });
+    fitAreas([areas[0]]);  // focus the most likely area; numbered markers show the others
+  }
+  function fitAreas(areas) {
+    const pts = areas.flatMap(a => circle(a.lon, a.lat, a.radius_km * 1.6, 16));
+    const lons = pts.map(p => p[0]), lats = pts.map(p => p[1]);
+    map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: pad(), duration: reduceMotion ? 0 : 1200, maxZoom: 15 });
+  }
+
+  function locMsg() { locLog.querySelector('.empty')?.remove(); const el = document.createElement('div'); el.className = 'msg-bot'; locLog.appendChild(el); return el; }
+  function consentFirst() {
+    let ok = false;
+    try { ok = localStorage.getItem('geoask.locateConsent') === '1'; } catch { /* ignore */ }
+    if (ok) return Promise.resolve(true);
+    return new Promise(resolve => {
+      const el = locMsg();
+      el.innerHTML = `<div class="card consent" role="group" aria-label="Before sending photos">
+        <h3>Send photos to Claude?</h3>
+        <p class="method">Locate sends your ${locFiles.length > 1 ? `${locFiles.length} photos` : 'photo'} to Anthropic’s Claude API with metadata removed (under Anthropic’s commercial terms, API data isn’t used for training). Map searches go to OpenStreetMap, Wikimedia Commons and Panoramax with coordinates only, never your photos. A run costs roughly $0.03–0.20 with Sonnet 5.5, less with Haiku 5.5.</p>
+        <div class="actions"><button class="btn primary" type="button" data-ok>Continue</button><button class="btn" type="button" data-no>Cancel</button></div></div>`;
+      el.querySelector('[data-ok]').onclick = () => { try { localStorage.setItem('geoask.locateConsent', '1'); } catch { /* ignore */ } el.remove(); resolve(true); };
+      el.querySelector('[data-no]').onclick = () => { el.remove(); if (!locLog.children.length) locEmpty(); resolve(false); };
+      el.querySelector('[data-ok]').focus();
+    });
+  }
+
+  async function runLocate(extraNote = '') {
+    if (!locFiles.length || locBusy) return;
+    if (!live) { const el = locMsg(); el.innerHTML = `<p>Locate runs on your own computer with <code>geoask serve</code> and an Anthropic API key, so it can’t run on this demo page.</p><div class="plan">uv pip install -e ".[serve,locate]"<br>echo "ANTHROPIC_API_KEY=…" &gt; .env<br>geoask serve</div>`; return; }
+    const st = await (await fetch('/api/locate/status')).json().catch(() => ({}));
+    if (!st.available) { const el = locMsg(); el.innerHTML = `<div class="card error" role="alert"><h3>Locate needs an Anthropic API key</h3><p class="method">Create a file named <code>.env</code> in the geoask folder containing <code>ANTHROPIC_API_KEY=…</code> (see <code>.env.example</code>), then restart <code>geoask serve</code>.</p></div>`; return; }
+    if (!(await consentFirst())) return;
+    locBusy = true; locGo.disabled = true; locGo.textContent = 'Locating…';
+    const note = [$('#loc-note').value.trim(), extraNote].filter(Boolean).join('. ');
+    const fd = new FormData();
+    locFiles.forEach(f => fd.append('files', f.file, f.file.name));
+    fd.append('note', note); fd.append('model', locModel); fd.append('share_meta', $('#loc-meta').checked);
+    locLast = { note: $('#loc-note').value.trim() };
+    const user = document.createElement('div'); user.className = 'msg-user';
+    user.innerHTML = `${locFiles.length} photo${locFiles.length > 1 ? 's' : ''}${note ? ` · ${esc(note)}` : ''}<br><small>${locModel === 'sonnet' ? 'Claude Sonnet 5.5' : 'Claude Haiku 5.5'}</small>`;
+    locLog.querySelector('.empty')?.remove(); locLog.appendChild(user);
+    const ctx = { bot: locMsg(), steps: null, reasoning: null, evidence: null, cost: null };
+    ctx.bot.innerHTML = `<ul class="steps"></ul>`; ctx.steps = ctx.bot.querySelector('.steps');
+    map.getSource('loc-areas')?.setData({ type: 'FeatureCollection', features: [] });
+    map.getSource('loc-labels')?.setData({ type: 'FeatureCollection', features: [] });
+    try {
+      const res = await fetch('/api/locate', { method: 'POST', body: fd });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader(), dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { value, done } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i; while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line.trim()) locEvent(JSON.parse(line), ctx); }
+        locLog.scrollTop = locLog.scrollHeight;
+      }
+    } catch (err) {
+      locError(ctx, `Couldn't reach GeoAsk: ${err.message}`, 'Make sure geoask serve is still running, then try again.');
+    } finally {
+      locBusy = false; locGo.textContent = 'Locate'; renderThumbs(); finishSteps(ctx);
+    }
+  }
+  locGo.onclick = () => runLocate();
+
+  const locStep = (ctx, text) => addStep(ctx, text);
+  function locError(ctx, message, hint) {
+    finishSteps(ctx);
+    ctx.bot.insertAdjacentHTML('beforeend', `<div class="card error" role="alert"><h3>Couldn't locate these photos</h3><p>${esc(message)}</p>${hint ? `<p class="method">${esc(hint)}</p>` : ''}<div class="actions"><button class="btn retry" type="button">${icon('retry', 'icon sm')}Try Again</button></div></div>`);
+    ctx.bot.querySelector('.retry:last-of-type').onclick = () => runLocate();
+  }
+  function locEvent(ev, ctx) {
+    if (ev.type === 'photos') {
+      const withGps = ev.photos.filter(p => p.meta?.gps).length;
+      ctx.steps.insertAdjacentHTML('beforebegin', `<div class="loc-photos">${ev.photos.map(p => `<div class="thumb"><img src="data:image/jpeg;base64,${p.thumb}" alt="Photo ${p.index}"><span class="n">${p.index}</span>${p.meta?.gps ? '<span class="gps">GPS</span>' : ''}</div>`).join('')}</div>`);
+      locStep(ctx, `Read ${ev.photos.length} photo${ev.photos.length > 1 ? 's' : ''} on this computer${withGps ? `: ${withGps} with camera GPS` : ''}`);
+    } else if (ev.type === 'recorded') {
+      map.getSource('loc-recorded')?.setData({ type: 'FeatureCollection', features: ev.points.map(p => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) });
+      ctx.steps.insertAdjacentHTML('beforebegin', `<div class="card"><h3>Camera-recorded location</h3><p class="method">${ev.points.map(p => `Photo ${p.index}: ${esc(Geo.format(p.lon, p.lat, 'dd'))} · ${esc(Geo.toMGRS(p.lon, p.lat, 4) || '')}`).join('<br>')}</p><p class="method">Shown as an amber dot. This comes from the photo’s own metadata, not from AI. ${$('#loc-meta').checked ? 'Claude will check whether the pictures agree with it.' : 'It isn’t shared with Claude.'}</p></div>`);
+    } else if (ev.type === 'step') locStep(ctx, ev.text);
+    else if (ev.type === 'thinking') {
+      if (!ctx.reasoning) { ctx.steps.insertAdjacentHTML('beforebegin', `<details class="reasoning"><summary>${icon('sparkle', 'icon sm')}Claude’s reasoning (summary)</summary></details>`); ctx.reasoning = ctx.bot.querySelector('.reasoning'); }
+      ctx.reasoning.insertAdjacentHTML('beforeend', `<p>${esc(ev.text)}</p>`);
+    } else if (ev.type === 'note') {
+      finishSteps(ctx); ctx.steps.insertAdjacentHTML('beforeend', `<li class="note done">${esc(ev.text)}</li>`);
+    } else if (ev.type === 'evidence') {
+      if (ev.kind === 'photos') {
+        ctx.steps.insertAdjacentHTML('beforeend', `<li class="ev done"><div class="evidence">${ev.items.map(p => `<figure><a href="${esc(p.page)}" target="_blank" rel="noopener"><img src="${esc(p.thumb)}" alt="Reference photo: ${esc(p.title)}" loading="lazy"></a><figcaption>${esc(p.source)} · ${esc(p.author)} · ${esc(p.licence)}</figcaption></figure>`).join('')}</div></li>`);
+      }
+    } else if (ev.type === 'usage') {
+      const t = ev.tokens || {};
+      const txt = `${(t.input_tokens + (t.cache_read_input_tokens || 0) + (t.cache_creation_input_tokens || 0)).toLocaleString()} in · ${(t.output_tokens || 0).toLocaleString()} out · ≈ $${ev.cost_usd.toFixed(3)}`;
+      if (!ctx.cost) { ctx.bot.insertAdjacentHTML('afterbegin', `<div class="cost" aria-label="Tokens and estimated cost so far"></div>`); ctx.cost = ctx.bot.querySelector('.cost'); }
+      ctx.cost.textContent = `${ev.model} · ${txt}`;
+    } else if (ev.type === 'estimate') showEstimate(ctx, ev.estimate);
+    else if (ev.type === 'error') locError(ctx, ev.message, ev.hint);
+  }
+
+  function showEstimate(ctx, e) {
+    finishSteps(ctx);
+    showAreas(e.areas);
+    const card = document.createElement('div'); card.className = 'card';
+    const pct = c => `${Math.round(c * 100)}%`;
+    const km = r => r < 1 ? `${Math.round(r * 1000)} m` : `${r < 10 ? r.toFixed(1) : Math.round(r)} km`;
+    card.innerHTML = `<h3>${esc(e.summary)}</h3>
+      <div class="when">${e.country?.name ? `${esc(e.country.name)} · ${pct(e.country.confidence)} · ` : ''}${esc(e.model)} · ${e.rounds} steps · ≈ $${e.cost_usd.toFixed(3)}</div>
+      <ol class="areas">${e.areas.map((a, i) => `<li class="area" data-i="${i}">
+        <div class="area-h"><span class="rank">${i + 1}</span><b>${esc(a.label)}</b><span class="band ${a.band}">${a.band} · ${pct(a.confidence)}</span></div>
+        <div class="meter" role="img" aria-label="Confidence ${pct(a.confidence)}"><i style="width:${Math.max(2, a.confidence * 100)}%"></i></div>
+        <p>${esc(a.why)}</p>
+        <p class="method">Within ${km(a.radius_km)} of ${esc(Geo.format(a.lon, a.lat, 'dd'))} · ${esc(a.level)}</p>
+        <div class="row"><button class="btn sm" type="button" data-show>${icon('target', 'icon sm')}Show on Map</button><button class="btn sm" type="button" data-not>${icon('x', 'icon sm')}Not Here</button></div></li>`).join('')}</ol>
+      ${e.areas.reduce((s, a) => s + a.confidence, 0) < 0.97 ? `<p class="method">Remaining ${pct(1 - e.areas.reduce((s, a) => s + a.confidence, 0))}: somewhere else.</p>` : ''}
+      <div class="clues" aria-label="Clues">${e.clues.map(c => `<span class="clue ${c.strength}" title="${esc(c.strength)} clue${c.photo ? `, photo ${c.photo}` : ''}"><i>${esc(c.kind)}</i>${esc(c.text)}</span>`).join('')}</div>
+      ${e.caveats ? `<p class="method">${esc(e.caveats)}</p>` : ''}
+      <div class="actions"><button class="btn" type="button" data-retry>${icon('retry', 'icon sm')}Try Again</button><button class="btn" type="button" data-switch>Try ${locModel === 'sonnet' ? 'Haiku 5.5' : 'Sonnet 5.5'}</button></div>
+      <p class="method">AI estimate: Claude can be wrong, and confidence is its own judgement. Strong clues are outlined in teal; weak ones are dashed.</p>
+      <div class="feedback"><span>Was this right?</span>
+        <button class="btn-icon fb" aria-label="Right" aria-pressed="false">${icon('thumbup', 'icon sm')}</button>
+        <button class="btn-icon fb" aria-label="Wrong" aria-pressed="false">${icon('thumbdown', 'icon sm')}</button><span class="fb-note" role="status"></span></div>`;
+    ctx.bot.appendChild(card);
+    card.querySelectorAll('.area').forEach(li => {
+      const a = e.areas[+li.dataset.i];
+      li.querySelector('[data-show]').onclick = () => { card.querySelectorAll('.area').forEach(x => x.classList.toggle('sel', x === li)); fitAreas([a]); };
+      li.querySelector('[data-not]').onclick = () => runLocate(`It is not in ${a.label} (around ${a.lat.toFixed(3)}, ${a.lon.toFixed(3)})`);
+    });
+    card.querySelector('[data-retry]').onclick = () => runLocate();
+    card.querySelector('[data-switch]').onclick = () => { document.querySelector(`[data-model="${locModel === 'sonnet' ? 'haiku' : 'sonnet'}"]`).click(); runLocate(); };
+    card.querySelectorAll('.fb').forEach(b => b.onclick = () => { card.querySelectorAll('.fb').forEach(x => x.setAttribute('aria-pressed', x === b)); card.querySelector('.fb-note').textContent = 'Thanks. Feedback stays on this device.'; });
+  }
+  try { if (localStorage.getItem('geoask.tab') === 'locate') setTab('locate'); } catch { /* ignore */ }
 
   // ---------- demo mode (GitHub Pages: no server) ----------
   const sleep = ms => new Promise(r => setTimeout(r, reduceMotion ? 0 : ms));

@@ -18,8 +18,9 @@ import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -140,6 +141,71 @@ def create_app() -> FastAPI:
             except Exception as e:  # noqa: BLE001 - surface every failure to the user
                 yield emit("error", message=f"{type(e).__name__}: {e}",
                            hint="Check your internet connection, then try again.")
+
+        return StreamingResponse(events(), media_type="application/x-ndjson")
+
+    # ---- Locate: where was this photo taken? (Claude agent + open-data tools) ----
+    @app.get("/api/locate/status")
+    def locate_status():
+        from .geolocate import agent as la
+
+        return {"available": la.available(), "models": la.MODELS,
+                "default": os.environ.get("GEOASK_LOCATE_MODEL", "sonnet"),
+                "mapillary": bool(os.environ.get("MAPILLARY_TOKEN")),
+                "max_photos": 5}
+
+    @app.post("/api/locate")
+    async def locate(files: Annotated[list[UploadFile], File()],
+                     note: Annotated[str, Form()] = "", model: Annotated[str, Form()] = "sonnet",
+                     share_meta: Annotated[bool, Form()] = True):
+        from .geolocate import agent as la
+        from .geolocate import images as li
+
+        def emit(kind: str, **kw) -> str:
+            return json.dumps({"type": kind, **kw}, default=str) + "\n"
+
+        raw = [(f.filename or "", await f.read()) for f in files[: li.MAX_PHOTOS]]
+
+        def events():
+            photos = []
+            for i, (name, data) in enumerate(raw, 1):
+                try:
+                    photos.append(li.load(data, i, name))
+                except ValueError as e:
+                    yield emit("error", message=str(e), hint="Use JPEG, PNG, HEIC-converted or WebP photos under 20 MB.")
+                    return
+            yield emit("photos", photos=[{"index": p.index, "name": p.name, "thumb": p.thumb_b64,
+                                          "width": p.width, "height": p.height, "meta": p.meta}
+                                         for p in photos])
+            gps = [p for p in photos if p.meta.get("gps")]
+            if gps:  # non-AI answer first: the camera recorded where it was
+                yield emit("recorded", points=[{"index": p.index, **p.meta["gps"]} for p in gps])
+            if not la.available():
+                yield emit("error", message="Locate needs an Anthropic API key.",
+                           hint="Create a .env file in the geoask folder with ANTHROPIC_API_KEY=… and restart geoask serve.")
+                return
+            q: queue.Queue = queue.Queue()
+            box: dict = {}
+
+            def work():
+                try:
+                    box["result"] = la.locate(photos, q.put, note=note, model=model,
+                                              share_meta=share_meta)
+                except la.LocateError as e:
+                    box["error"] = str(e)
+                except Exception as e:  # noqa: BLE001 - surface every failure to the user
+                    box["error"] = f"{type(e).__name__}: {e}"
+                finally:
+                    q.put(None)
+
+            threading.Thread(target=work, daemon=True).start()
+            yield emit("step", text=f"Sending {len(photos)} photo(s) to {la.MODELS.get(model, model)} "
+                       "(metadata removed)")
+            while (ev := q.get()) is not None:
+                yield json.dumps(ev, default=str) + "\n"
+            if "error" in box:
+                yield emit("error", message=box["error"],
+                           hint="Try again, add another photo of the same place, or switch model.")
 
         return StreamingResponse(events(), media_type="application/x-ndjson")
 

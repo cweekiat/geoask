@@ -1,7 +1,7 @@
 # GeoAsk
 
 **A sensor-agnostic platform for geospatial foundation models: satellite imagery analysis,
-change detection and pattern-of-life detection, asked in plain language.**
+change detection, pattern-of-life detection and photo geolocation, asked in plain language.**
 
 GeoAsk turns a question such as *"What has changed at the Tesla Gigafactory Berlin since 2019?"*,
 *"How busy is this anchorage, pass by pass?"* or *"What can a 10 m mast at 48N UG 6387 4975 see?"*
@@ -33,7 +33,38 @@ sight** with an elevation profile from the measure tool.
 | **Terrain** | Elevation, slope, relief; viewshed with Earth curvature and refraction; line of sight | Copernicus GLO-30 DEM |
 | **Super-resolution (display only)** | SEN2SR-Lite 10 m → 2.5 m, physically constrained, with a consistency map | Sentinel-2 RGB + NIR |
 | **Mapping** | MGRS grid (zones, 100 km, 10 km, 1 km), coordinates in decimal / DMS / MGRS / UTM, distance and bearing (true and mils), point cards with elevation, coordinate search, hillshade, 3D terrain and buildings | OpenStreetMap, AWS Terrain Tiles |
+| **Locate: where was this photo taken?** | A Claude agent (Sonnet 5.5 or Haiku 5.5) reads the clues in street, aerial or satellite photos and checks them with open-data tools, then returns up to 3 areas with confidence, never a pin | Your photos + OSM, Wikimedia Commons, Panoramax, Sentinel-2, GLO-30 |
 | **Any place** | Curated areas → bundled offline gazetteers → OpenStreetMap Nominatim (keyless, cached), or draw a box | Global |
+
+## Locate: photo geolocation agent
+
+Drop up to five photos of one place into the **Locate** tab. Claude reasons like an expert
+GeoGuessr player (scripts on signs, driving side, road markings, plants, architecture, terrain, sun
+and shadows) and **verifies** its ideas with free, open tools:
+
+| Tool | Source |
+|---|---|
+| `find_place`, `search_map` | OpenStreetMap Nominatim and Overpass: is there a "Rua Augusta" or a Pingo Doce near here? |
+| `nearby_photos` | Wikimedia Commons, Panoramax (and Mapillary with a free token): compare with real photos from a candidate spot |
+| `view_satellite` | Sentinel-2 cloudless: compare coastlines, street grids, fields |
+| `terrain_at` | Copernicus GLO-30: are there mountains or flat plains there? |
+| `sun_check` | solar azimuth and elevation vs the shadows, when the capture time is known |
+| `submit_estimate` | up to 3 areas (centre, radius, level, confidence, reasons) and the clues |
+
+Privacy and safety by design: metadata (camera GPS, time) is read **on your computer** and shared
+only if you allow it; the photos sent to Claude are re-encoded without metadata; areas are never
+smaller than a few hundred metres; the agent ignores faces and won't help find people. A photo with
+camera GPS shows its recorded location straight away, without AI. Details and the evaluation plan:
+[docs/GEOLOCATE.md](docs/GEOLOCATE.md).
+
+```bash
+uv pip install -e ".[serve,locate]"
+cp .env.example .env          # then add ANTHROPIC_API_KEY=…
+geoask serve                  # open the Locate tab
+```
+
+A run costs roughly $0.03–0.20 with Sonnet 5.5 and a fraction of that with Haiku 5.5; the app
+shows tokens and an estimated cost as it runs.
 
 ## Architecture
 
@@ -122,7 +153,9 @@ Contains modified Copernicus Sentinel data, processed by GeoAsk (Sentinel-2 L2A 
 Search on AWS Open Data; Sentinel-1 RTC via Microsoft Planetary Computer). Copernicus GLO-30 DEM:
 © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by
 the European Union and ESA. Place names and map data © OpenStreetMap contributors (ODbL). SEN2SR
-(ESA OpenSR / TACO foundation), CC0-1.0. Yearly mosaics: Sentinel-2 cloudless by EOX. High-resolution
+(ESA OpenSR / TACO foundation), CC0-1.0. Reference photos: Wikimedia Commons and Panoramax contributors, each under
+its own licence (credited in the app). Satellite views in Locate: Sentinel-2 cloudless by EOX
+(CC BY-NC-SA 4.0). Locate uses the Anthropic Claude API. Yearly mosaics: Sentinel-2 cloudless by EOX. High-resolution
 basemap © Esri, Maxar (display only). Terrain tiles: Mapzen / AWS. Clay v1.5 (Apache-2.0).
 
 Design notes: [docs/PLAN.md](docs/PLAN.md) (scope and decisions) and [docs/DESIGN.md](docs/DESIGN.md)
