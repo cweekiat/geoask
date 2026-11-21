@@ -1,7 +1,7 @@
 [project]
 name = "geoask"
 version = "0.1.0"
-description = "Ask questions of satellite imagery. Sensor-agnostic, local-first, works anywhere on Earth."
+description = "Sensor-agnostic platform for geospatial foundation models: satellite imagery analysis, change and pattern-of-life detection, asked in plain language."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -10,6 +10,7 @@ dependencies = [
   "rasterio>=1.3.10",
   "pystac-client>=0.8",
   "pyyaml>=6",
+  "scipy>=1.11",
 ]
 
 [project.optional-dependencies]
@@ -17,6 +18,7 @@ ml = ["torch>=2.3", "onnx>=1.16", "onnxruntime>=1.18"]
 apple = ["coremltools>=8.0"]
 serve = ["fastapi>=0.110", "uvicorn>=0.29"]
 dev = ["pytest>=8", "ruff>=0.5"]
+detect = ["sahi>=0.11"]  # optional: run any SAHI-supported detector (YOLO, torchvision, HF)
 
 [project.scripts]
 geoask = "geoask.cli:main"

@@ -30,6 +30,8 @@
     retry: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>',
     select: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M10 4h4M10 20h4M4 10v4M20 10v4"/>',
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
+    copy: '<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+    ruler: '<path d="m3.5 15.5 12-12 5 5-12 12-5-5Z"/><path d="m7 12 2 2M10 9l2 2M13 6l2 2"/>',
     sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5"/>',
   };
   const icon = (n, cls = 'icon') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -100,7 +102,7 @@
     map.addSource('sel', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer({ id: 'sel-fill', type: 'fill', source: 'sel', paint: { 'fill-color': '#5aa9ff', 'fill-opacity': 0.12 } });
     map.addLayer({ id: 'sel-line', type: 'line', source: 'sel', paint: { 'line-color': '#8cc2ff', 'line-width': 2 } });
-    map.on('click', 'areas-fill', e => { if (!drawing) focusPlace(e.features[0].properties.name); });
+    map.on('click', 'areas-fill', e => { if (!drawing && !measuring) focusPlace(e.features[0].properties.name); });
     map.on('mouseenter', 'areas-fill', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'areas-fill', () => map.getCanvas().style.cursor = '');
 
@@ -108,10 +110,21 @@
   });
   map.on('error', e => { if (String(e?.error?.message || '').includes('styles/fiord')) toast('Map style unavailable — check your connection.'); });
 
-  map.on('mousemove', e => {
-    const { lng, lat } = e.lngLat;
-    $('#hud').textContent = `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'}  ${lng.toFixed(4)}° E   z${map.getZoom().toFixed(1)}`;
-  });
+  // ---------- coordinates: decimal, DMS, MGRS or UTM (click the readout to switch) ----------
+  const FORMATS = ['dd', 'dms', 'mgrs', 'utm'], FORMAT_NAMES = { dd: 'Decimal', dms: 'DMS', mgrs: 'MGRS', utm: 'UTM' };
+  let fmt = 'dd';
+  try { fmt = FORMATS.includes(localStorage.getItem('geoask.fmt')) ? localStorage.getItem('geoask.fmt') : 'dd'; } catch { /* private mode */ }
+  let lastPos = { lng: 103.8198, lat: 1.3521 };
+  const hud = $('#hud');
+  const showHud = () => { hud.textContent = Geo.format(lastPos.lng, lastPos.lat, fmt); };
+  hud.onclick = () => {
+    fmt = FORMATS[(FORMATS.indexOf(fmt) + 1) % FORMATS.length];
+    try { localStorage.setItem('geoask.fmt', fmt); } catch { /* ignore */ }
+    showHud(); toast(`Coordinates: ${FORMAT_NAMES[fmt]}`);
+  };
+  map.on('mousemove', e => { lastPos = e.lngLat; showHud(); });
+  map.on('move', () => { if (matchMedia('(hover: none)').matches) { lastPos = map.getCenter(); showHud(); } });
+  showHud();
 
   function areasGeoJSON() {
     return { type: 'FeatureCollection', features: Object.entries(places).map(([name, [w, s, e, n]]) => ({
@@ -187,6 +200,143 @@
   };
   map.on('mouseup', finish); map.on('touchend', finish);
 
+
+  // ---------- mapping: MGRS grid, hillshade, 3D buildings ----------
+  map.on('style.load', () => {
+    const before = labelLayers[0];
+    map.addLayer({ id: 'hillshade', type: 'hillshade', source: 'dem', layout: { visibility: 'none' },
+      paint: { 'hillshade-exaggeration': 0.55, 'hillshade-shadow-color': '#04070c', 'hillshade-highlight-color': '#9fc6ff' } }, before);
+    if (map.getSource('openmaptiles')) {
+      map.addLayer({ id: 'buildings-3d', type: 'fill-extrusion', source: 'openmaptiles', 'source-layer': 'building', minzoom: 14,
+        layout: { visibility: 'none' },
+        paint: { 'fill-extrusion-color': '#8fb3e0', 'fill-extrusion-opacity': 0.82,
+          'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 6],
+          'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0] } });
+    }
+    map.addSource('mgrs', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: 'mgrs-line', type: 'line', source: 'mgrs', filter: ['==', ['geometry-type'], 'LineString'], layout: { visibility: 'none' },
+      paint: { 'line-color': ['match', ['get', 'kind'], 'gzd', '#ffd27a', '100k', '#8cc2ff', '#8cc2ff'],
+        'line-width': ['match', ['get', 'kind'], 'gzd', 1.8, '100k', 1.4, 1],
+        'line-opacity': ['match', ['get', 'kind'], 'gzd', 0.95, '100k', 0.85, 0.7] } });
+    map.addLayer({ id: 'mgrs-label', type: 'symbol', source: 'mgrs', filter: ['==', ['geometry-type'], 'Point'], layout: { visibility: 'none',
+      'text-field': ['get', 'label'], 'text-size': ['match', ['get', 'kind'], 'gzd', 14, 12], 'text-font': ['Noto Sans Regular'], 'text-allow-overlap': false },
+      paint: { 'text-color': ['match', ['get', 'kind'], 'gzd', '#ffd27a', '#cfe3ff'], 'text-halo-color': '#070b12', 'text-halo-width': 1.4 } });
+    map.addSource('measure', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: 'measure-line', type: 'line', source: 'measure', filter: ['==', ['geometry-type'], 'LineString'],
+      paint: { 'line-color': '#ffd27a', 'line-width': 2.2, 'line-dasharray': [2, 1] } });
+    map.addLayer({ id: 'measure-pt', type: 'circle', source: 'measure', filter: ['==', ['geometry-type'], 'Point'],
+      paint: { 'circle-radius': 4.5, 'circle-color': '#070b12', 'circle-stroke-color': '#ffd27a', 'circle-stroke-width': 2 } });
+    map.addSource('pin', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: 'pin', type: 'circle', source: 'pin',
+      paint: { 'circle-radius': 6, 'circle-color': '#5aa9ff', 'circle-stroke-color': '#e8eef6', 'circle-stroke-width': 2 } });
+  });
+
+  const vis = (id, on) => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+  $('#ov-hillshade').onchange = e => vis('hillshade', e.target.checked);
+  const buildingsOn = () => $('#ov-buildings').checked && $('#btn-globe').getAttribute('aria-pressed') === 'true';
+  $('#ov-buildings').onchange = () => vis('buildings-3d', buildingsOn());
+  $('#btn-globe').addEventListener('click', () => vis('buildings-3d', buildingsOn()));
+
+  // MGRS grid: grid-zone boundaries always; then 100 km, 10 km or 1 km lines as you zoom in.
+  // Lines are UTM eastings/northings traced through the inverse projection, so they curve
+  // correctly and stop at zone edges.
+  function mgrsFeatures() {
+    const z = map.getZoom(), b = map.getBounds(), feats = [];
+    const W = Math.max(b.getWest(), -180), E = Math.min(b.getEast(), 180);
+    const S = Math.max(b.getSouth(), -80), N = Math.min(b.getNorth(), 84);
+    if (W >= E || S >= N) return feats;
+    const line = (coords, kind) => coords.length > 1 && feats.push({ type: 'Feature', properties: { kind }, geometry: { type: 'LineString', coordinates: coords } });
+    const label = (lng, lat, text, kind) => feats.push({ type: 'Feature', properties: { kind, label: text }, geometry: { type: 'Point', coordinates: [lng, lat] } });
+    // grid zone designators (6° x 8°; the Norway/Svalbard exceptions are drawn as the regular grid)
+    for (let lon = Math.ceil((W + 180) / 6) * 6 - 180; lon <= E; lon += 6) line([[lon, S], [lon, N]], 'gzd');
+    for (let lat = Math.ceil((S + 80) / 8) * 8 - 80; lat <= N; lat += 8) line([[W, lat], [E, lat]], 'gzd');
+    if (z < 7) {
+      for (let lon = Math.floor((W + 180) / 6) * 6 - 180; lon < E; lon += 6)
+        for (let lat = Math.floor((S + 80) / 8) * 8 - 80; lat < N; lat += 8) {
+          const cx = Math.min(Math.max(lon + 3, W), E), cy = Math.min(Math.max(lat + 4, S), N);
+          if (z >= 3) label(cx, cy, `${Geo.zoneFor(lon + 3, lat + 4)}${Geo.bandFor(lat + 4)}`, 'gzd');
+        }
+      if (z < 5.5) return feats;
+    }
+    const step = z < 9 ? 100000 : z < 12 ? 10000 : 1000, kind = step === 100000 ? '100k' : 'fine';
+    for (let zone = Geo.zoneFor(W + 1e-9, 0); zone <= Geo.zoneFor(E - 1e-9, 0); zone++) {
+      const zw = Math.max(W, Geo.cm(zone) - 3), ze = Math.min(E, Geo.cm(zone) + 3);
+      for (const [s, n, south] of [[S, Math.min(N, 0), true], [Math.max(S, 0), N, false]]) {
+        if (s >= n) continue;
+        const corners = [[zw, s], [ze, s], [zw, n], [ze, n], [Geo.cm(zone), s], [Geo.cm(zone), n]].map(([x, y]) => Geo.utmForward(x, y, zone, south));
+        const e0 = Math.min(...corners.map(c => c.e)), e1 = Math.max(...corners.map(c => c.e));
+        const n0 = Math.min(...corners.map(c => c.n)), n1 = Math.max(...corners.map(c => c.n));
+        if ((e1 - e0) / step > 120 || (n1 - n0) / step > 120) continue;  // too dense to be useful
+        const inside = ([x, y]) => x >= zw - 1e-9 && x <= ze + 1e-9 && y >= s - 1e-9 && y <= n + 1e-9;
+        const trace = pts => { let run = []; for (const p of pts) { if (inside(p)) run.push(p); else { line(run, kind); run = []; } } line(run, kind); };
+        const K = 24;
+        for (let e = Math.ceil(e0 / step) * step; e <= e1; e += step)
+          trace(Array.from({ length: K + 1 }, (_, i) => Geo.utmInverse(e, n0 + (n1 - n0) * i / K, zone, south)));
+        for (let nn = Math.ceil(n0 / step) * step; nn <= n1; nn += step)
+          trace(Array.from({ length: K + 1 }, (_, i) => Geo.utmInverse(e0 + (e1 - e0) * i / K, nn, zone, south)));
+        if (step === 100000 || z < 13) {  // label each square: "VU" for 100 km, easting/northing km for finer lines
+          for (let e = Math.floor(e0 / step) * step; e < e1; e += step)
+            for (let nn = Math.floor(n0 / step) * step; nn < n1; nn += step) {
+              const c = Geo.utmInverse(e + step / 2, nn + step / 2, zone, south);
+              if (!inside(c)) continue;
+              const id = Geo.square(zone, e + 1, nn + 1);
+              const txt = step === 100000 ? id : `${id} ${Math.floor((e % 100000) / 10000)} ${Math.floor((nn % 100000) / 10000)}`;
+              if (step !== 1000) label(c[0], c[1], txt, kind);
+            }
+        }
+      }
+    }
+    return feats;
+  }
+  const refreshGrid = () => { if ($('#ov-mgrs').checked) map.getSource('mgrs')?.setData({ type: 'FeatureCollection', features: mgrsFeatures() }); };
+  $('#ov-mgrs').onchange = e => { vis('mgrs-line', e.target.checked); vis('mgrs-label', e.target.checked); refreshGrid(); };
+  map.on('moveend', refreshGrid);
+
+  // ---------- measure distance and bearing (WGS84 ellipsoid, Vincenty) ----------
+  let measuring = false, mpts = [];
+  const mhint = $('#measure-hint'), mout = $('#measure-out');
+  function renderMeasure() {
+    const feats = mpts.map(p => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: p } }));
+    if (mpts.length > 1) feats.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: mpts } });
+    map.getSource('measure')?.setData({ type: 'FeatureCollection', features: feats });
+    if (mpts.length < 2) { mout.textContent = mpts.length ? 'Add another point.' : 'Click the map to add points.'; return; }
+    let total = 0, leg;
+    for (let i = 1; i < mpts.length; i++) { leg = Geo.inverse(...mpts[i - 1], ...mpts[i]); total += leg.m; }
+    const mils = Math.round(leg.bearing * 6400 / 360);
+    mout.textContent = `Total ${Geo.fmtDist(total)} · last leg ${Geo.fmtDist(leg.m)} at ${leg.bearing.toFixed(1).padStart(5, '0')}° true (${mils} mils)`;
+  }
+  function setMeasuring(on) {
+    measuring = on; mhint.hidden = !on; $('#btn-measure').setAttribute('aria-pressed', on);
+    document.body.classList.toggle('measuring', on);
+    if (on) { if (drawing) setDrawing(false); mpts = []; renderMeasure(); $('#measure-centre').focus(); }
+    else { map.getSource('measure')?.setData({ type: 'FeatureCollection', features: [] }); }
+  }
+  $('#btn-measure').onclick = () => setMeasuring(!measuring);
+  $('#measure-done').onclick = () => setMeasuring(false);
+  $('#measure-undo').onclick = () => { mpts.pop(); renderMeasure(); };
+  $('#measure-centre').onclick = () => { const c = map.getCenter(); mpts.push([c.lng, c.lat]); renderMeasure(); };
+  map.on('click', e => { if (measuring) { mpts.push([e.lngLat.lng, e.lngLat.lat]); renderMeasure(); } });
+
+  // ---------- point card: right-click (or long-press) for every coordinate format + elevation ----------
+  let popup;
+  async function pointCard(lngLat, title = '') {
+    const { lng, lat } = lngLat;
+    const rows = FORMATS.map(f => `<div class="pc-row"><span>${FORMAT_NAMES[f]}</span><code>${esc(Geo.format(lng, lat, f))}</code><button class="btn-icon sm" type="button" data-copy="${esc(Geo.format(lng, lat, f))}" aria-label="Copy ${FORMAT_NAMES[f]}">${icon('copy', 'icon sm')}</button></div>`).join('');
+    popup?.remove();
+    popup = new maplibregl.Popup({ className: 'point-card', maxWidth: '360px' }).setLngLat(lngLat)
+      .setHTML(`<div>${title ? `<div class="pc-title">${esc(title)}</div>` : ''}${rows}<div class="pc-row"><span>Elevation</span><code id="pc-elev">${live ? 'Looking up…' : 'Needs geoask serve'}</code></div></div>`).addTo(map);
+    popup.getElement().querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); } catch { toast('Copy isn’t available here'); }
+    });
+    if (live) {
+      try {
+        const r = await (await fetch(`/api/elevation?lon=${lng}&lat=${lat}`)).json();
+        const el = $('#pc-elev'); if (el) el.textContent = r.elevation_m != null ? `${r.elevation_m.toFixed(0)} m · ${r.source}` : 'No data here';
+      } catch { const el = $('#pc-elev'); if (el) el.textContent = 'Unavailable'; }
+    }
+  }
+  map.on('contextmenu', e => { e.preventDefault(); pointCard(e.lngLat); });
+
   // ---------- layers popover ----------
   const lp = $('#layers'), lb = $('#btn-layers');
   const setLayers = open => { lp.hidden = !open; lb.setAttribute('aria-expanded', open); lb.setAttribute('aria-pressed', open); if (open) lp.querySelector('input:checked')?.focus(); };
@@ -252,10 +402,13 @@
     } else {
       found = Object.fromEntries(Object.entries(places).filter(([n]) => !term || n.includes(term)).slice(0, 8));
     }
+    const pt = Geo.parseCoords(q.value);
+    if (pt) found = { [`${COORD}${pt[0]},${pt[1]}`]: [pt[0] - 0.004, pt[1] - 0.004, pt[0] + 0.004, pt[1] + 0.004], ...found };
     items = Object.keys(found);
-    const hint = live && term && onlineTerm !== term
+    const hint = live && term && !pt && onlineTerm !== term
       ? `<li role="option" aria-disabled="true" class="hint">Press Return to search the whole world</li>` : '';
-    const label = n => /,/.test(n) ? n : titleCase(n);  // geocoder names arrive already cased
+    const label = n => n.startsWith(COORD) ? `Go to ${Geo.format(...n.slice(COORD.length).split(',').map(Number), fmt)}`
+      : /,/.test(n) ? n : titleCase(n);  // geocoder names arrive already cased
     results.innerHTML = (items.map((n, i) => `<li role="option" id="opt-${i}" aria-selected="${i === sel}" data-name="${esc(n)}">${icon('pin', 'icon sm')}<span>${esc(label(n))}</span><span class="meta">${approxKm2(found[n])} km²</span></li>`).join('') + hint)
       || `<li role="option" aria-disabled="true">${live ? 'No match anywhere. Try another name, or draw an area.' : 'No match. Try another name, or draw an area.'}</li>`;
     results.hidden = false; search.setAttribute('aria-expanded', 'true');
@@ -270,7 +423,7 @@
     else if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); renderResults(); e.preventDefault(); }
     else if (e.key === 'Enter') {
       e.preventDefault();
-      if (live && sel < 0 && onlineTerm !== q.value.trim().toLowerCase()) { renderResults(true); return; }
+      if (live && sel < 0 && !Geo.parseCoords(q.value) && onlineTerm !== q.value.trim().toLowerCase()) { renderResults(true); return; }
       const n = items[Math.max(sel, 0)]; if (n) { focusPlace(n); closeResults(); q.blur(); }
     }
     else if (e.key === 'Escape') { closeResults(); q.blur(); }
@@ -278,7 +431,15 @@
   results.addEventListener('pointerdown', e => { const li = e.target.closest('li[data-name]'); if (li) { e.preventDefault(); focusPlace(li.dataset.name); closeResults(); q.blur(); } });
   q.addEventListener('blur', () => setTimeout(closeResults, 120));
 
+  const COORD = '@coord:';
   function focusPlace(name) {
+    if (name.startsWith(COORD)) {  // a typed coordinate: fly there, drop a pin, open its point card
+      const [lng, lat] = name.slice(COORD.length).split(',').map(Number);
+      map.getSource('pin')?.setData({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [lng, lat] } });
+      map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 14), duration: reduceMotion ? 0 : 1100 });
+      map.once('moveend', () => pointCard({ lng, lat }));
+      return;
+    }
     const [w, s, e, n] = found[name] || places[name];
     const short = name.split(',')[0];
     q.value = /,/.test(name) ? short : titleCase(name);
@@ -352,7 +513,8 @@
   function handle(ev, ctx) {
     if (ev.type === 'plan') {
       showPlan(ctx, ev);
-      const b = ev.args?.bbox || places[ev.args?.place];
+      const pt = ev.args?.lon != null ? [ev.args.lon, ev.args.lat] : null;
+      const b = ev.args?.bbox || places[ev.args?.place] || (pt && [pt[0] - 0.03, pt[1] - 0.03, pt[0] + 0.03, pt[1] + 0.03]);
       if (b) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), duration: reduceMotion ? 0 : 1100, maxZoom: 15 });
     }
     else if (ev.type === 'step') addStep(ctx, ev.text);
@@ -403,7 +565,117 @@
   const fmtHa = n => `${Math.round(n).toLocaleString()} ha`;
   const itemUrl = id => `https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a/items/${encodeURIComponent(id)}`;
 
+  // Terrain and viewshed results: one overlay, no before/after.
+  function showSingle(ctx, r, base) {
+    finishSteps(ctx);
+    const ha = n => fmtHa(n), m = v => `${Math.round(v).toLocaleString()} m`;
+    const vs = r.tool === 'viewshed';
+    const stats = vs ? [
+      [ha(r.visible_ha), 'Visible ground', 'fm'], [`${Math.round(100 * r.visible_ha / r.area_ha)}%`, `Of the ${r.radius_m / 1000} km circle`],
+      [m(r.observer_elev_m), 'Surface height at observer'], [`${r.observer_h_m} m → ${r.target_h_m} m`, 'Observer → target height']]
+      : [[`${m(r.elev_min_m)} – ${m(r.elev_max_m)}`, 'Elevation range', 'fm'], [m(r.elev_mean_m), 'Mean elevation'],
+        [`${r.slope_mean_deg.toFixed(1)}°`, 'Mean slope'], [ha(r.steep_ha), 'Steeper than 15°']];
+    const title = vs ? `Viewshed · ${Geo.toMGRS(r.observer[0], r.observer[1], 4)}` : `Terrain · ${r.place_source === 'drawn' ? 'Selected area' : esc(/[A-Z0-9]/.test(r.place) ? r.place : titleCase(r.place))}`;
+    const legend = vs ? `<span><i class="sw" style="background:#34d1c4"></i>Visible</span><span><i class="sw" style="background:#0b1220"></i>Hidden</span>`
+      : `<span><i class="sw" style="background:linear-gradient(90deg,#16365c,#2878a0,#78aa78,#c8b482,#f5f5f5)"></i>Low → high, with hillshade</span>`;
+    const method = vs
+      ? `Sight lines are traced from the observer to every 30 m cell in the circle, allowing for Earth curvature and standard refraction. The ${esc(r.source)} is a surface model: buildings and tree canopy block views, but objects smaller than 30 m are missed.`
+      : `Elevation and slope from the ${esc(r.source)} at 30 m. It's a surface model, so in towns and forests the heights are roof and canopy heights.`;
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = `<h3>${title}</h3>
+      <div class="when">${esc(r.source)} · ${r.grid.res_m} m · ${esc(r.grid.crs)}</div>
+      <div class="stats">${stats.map(([v, k, c]) => `<div class="stat ${c || ''}"><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join('')}</div>
+      <div class="legend">${legend}</div>
+      <div class="actions"><button class="btn primary act-show" type="button">${icon('target', 'icon sm')}Show on Map</button></div>
+      <details><summary>Method</summary><p class="method">${method}</p></details>`;
+    ctx.bot.appendChild(card);
+    const show = () => {
+      clearResult();
+      map.addSource('res-delta', { type: 'image', url: base + r.images.overlay, coordinates: r.corners });
+      map.addLayer({ id: 'res-delta', type: 'raster', source: 'res-delta', paint: { 'raster-fade-duration': 0, 'raster-opacity': 0.85 } }, map.getLayer('areas-fill') ? 'areas-fill' : undefined);
+      const ov = $('#ov-change'); ov.disabled = false; ov.checked = true; $('#ov-change-d').textContent = vs ? 'Viewshed' : 'Terrain relief';
+      if (vs) map.getSource('pin')?.setData({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: r.observer } });
+      const lons = r.corners.map(c => c[0]), lats = r.corners.map(c => c[1]);
+      map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: pad(), duration: reduceMotion ? 0 : 1200 });
+    };
+    card.querySelector('.act-show').onclick = show;
+    show();
+  }
+
+  // Super-resolution: the 10 m original and the 2.5 m estimate, blended with the timeline.
+  function showSharpened(ctx, r, base) {
+    finishSteps(ctx);
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = `<h3>Sharpened view · ${r.place_source === 'drawn' ? 'Selected area' : esc(/[A-Z0-9]/.test(r.place) ? r.place : titleCase(r.place))}</h3>
+      <div class="when">${esc(r.date)} · ${r.grid.res_m} m → ${r.out_res_m} m · ${esc(r.model)}</div>
+      <p class="method"><b>For viewing only.</b> The extra detail is the model’s estimate. It’s constrained to agree with the real 10 m pixels, but GeoAsk never measures from it.</p>
+      <div class="stats">
+        <div class="stat fm"><div class="v">${r.out_res_m} m</div><div class="k">Display resolution</div></div>
+        <div class="stat"><div class="v">${r.consistency_mean.toFixed(3)}</div><div class="k">Mean difference from real pixels (reflectance)</div></div></div>
+      <div class="legend"><span><i class="sw" style="background:#ffc45c"></i>Least consistent with the 10 m image</span></div>
+      <div class="actions">
+        <button class="btn primary act-compare" type="button">${icon('compare', 'icon sm')}Compare 10 m / 2.5 m</button>
+        <button class="btn act-show" type="button">${icon('target', 'icon sm')}Show Consistency</button></div>
+      <details><summary>Model and source</summary><p class="method">${esc(r.citation)}. Licence ${esc(r.licence)}. Scenes: ${r.scenes.map(esc).join(', ')}.</p></details>`;
+    ctx.bot.appendChild(card);
+    const view = { ...r, index: 'sr', date0: '10 m original', date1: '2.5 m sharpened' };
+    card.querySelector('.act-compare').onclick = () => showOnMap(view, base, true);
+    card.querySelector('.act-show').onclick = () => showOnMap(view, base, false);
+    showOnMap(view, base, true);
+  }
+
+  // Pattern of life: vessels per radar pass, unusual passes, and where they were.
+  function showActivity(ctx, r, base) {
+    finishSteps(ctx);
+    const W = 320, H = 96, n = r.series.length, max = Math.max(...r.series.map(s => s.count), 1), bw = W / n;
+    const unusual = new Set(r.unusual.map(u => u.date));
+    const bars = r.series.map((s, i) => {
+      const h = Math.max(2, (s.count / max) * (H - 18));
+      const col = unusual.has(s.date) ? '#ffc45c' : '#5aa9ff';
+      return `<rect x="${(i * bw + 1).toFixed(1)}" y="${(H - 14 - h).toFixed(1)}" width="${Math.max(bw - 2, 1).toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${col}"><title>${s.date}: ${s.count} vessels${unusual.has(s.date) ? ' (unusual)' : ''}</title></rect>`;
+    }).join('');
+    const medY = H - 14 - (r.median_count / max) * (H - 18);
+    const chart = `<svg class="spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="Vessels per radar pass, ${r.date0} to ${r.date1}. Typical ${Math.round(r.median_count)}, busiest ${r.max_count} on ${r.max_date}.">${bars}
+      <line x1="0" x2="${W}" y1="${medY.toFixed(1)}" y2="${medY.toFixed(1)}" stroke="#e8eef6" stroke-dasharray="3 3" stroke-width="1" opacity=".6"/>
+      <text x="0" y="${H - 2}" fill="#8193a8" font-size="10">${esc(r.date0)}</text><text x="${W}" y="${H - 2}" fill="#8193a8" font-size="10" text-anchor="end">${esc(r.date1)}</text></svg>`;
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = `<h3>Vessel activity · ${r.place_source === 'drawn' ? 'Selected area' : esc(/[A-Z0-9]/.test(r.place) ? r.place : titleCase(r.place))}</h3>
+      <div class="when">${esc(r.date0)} → ${esc(r.date1)} · ${r.passes} radar passes · ${esc(r.sensor)}</div>
+      <div class="stats">
+        <div class="stat fm"><div class="v">${Math.round(r.median_count)}</div><div class="k">Vessels on a typical pass</div></div>
+        <div class="stat"><div class="v">${r.max_count}</div><div class="k">Busiest · ${esc(r.max_date)}</div></div>
+        <div class="stat"><div class="v">${r.unusual.length}</div><div class="k">Unusual passes</div></div>
+        <div class="stat"><div class="v">${r.fixed_targets}</div><div class="k">Fixed targets ignored</div></div></div>
+      ${chart}
+      <div class="legend"><span><i class="sw" style="background:#5aa9ff"></i>Vessels per pass</span><span><i class="sw" style="background:#ffc45c"></i>Unusual (beyond 3 robust SD)</span><span><i class="sw" style="background:#e8eef6;height:2px"></i>Typical</span></div>
+      <div class="actions"><button class="btn primary act-show" type="button">${icon('target', 'icon sm')}Show on Map</button></div>
+      <details><summary>Method and limits</summary><p class="method">Each pass is cut into 512 px slices with 20% overlap (SAHI-style), a CFAR detector finds radar-bright targets on open water, and boxes split by slice edges are merged. Targets seen in the same place on 80% of passes (beacons, platforms, islets) are ignored. Vessels under about 20–30 m are often missed, ships alongside piers merge with land, and nothing here says who a vessel is.</p></details>`;
+    ctx.bot.appendChild(card);
+    const show = async () => {
+      clearResult();
+      map.addSource('res-delta', { type: 'image', url: base + r.images.overlay, coordinates: r.corners });
+      map.addLayer({ id: 'res-delta', type: 'raster', source: 'res-delta', paint: { 'raster-fade-duration': 0, 'raster-opacity': 0.8 } }, map.getLayer('areas-fill') ? 'areas-fill' : undefined);
+      try {
+        const pts = await (await fetch(base + r.images.points)).json();
+        map.addSource('res-points', { type: 'geojson', data: pts });
+        map.addLayer({ id: 'res-points', type: 'circle', source: 'res-points', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 2, 14, 5], 'circle-color': '#ffc45c', 'circle-stroke-color': '#070b12', 'circle-stroke-width': 1 } });
+        if (!showActivity.bound) {  // register once; the layer is replaced on each result
+          showActivity.bound = true;
+          map.on('click', 'res-points', e => { const f = e.features[0]; pointCard(e.lngLat, `Vessel · ${f.properties.date} · ~${f.properties.length_m} m`); });
+        }
+      } catch { /* points are optional */ }
+      const ov = $('#ov-change'); ov.disabled = false; ov.checked = true; $('#ov-change-d').textContent = 'Vessel density and detections';
+      const lons = r.corners.map(c => c[0]), lats = r.corners.map(c => c[1]);
+      map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: pad(), duration: reduceMotion ? 0 : 1200 });
+    };
+    card.querySelector('.act-show').onclick = show;
+    show();
+  }
+
   function showResult(ctx, r, base) {
+    if (r.tool === 'activity') return showActivity(ctx, r, base);
+    if (r.tool === 'terrain' || r.tool === 'viewshed') return showSingle(ctx, r, base);
+    if (r.tool === 'super_resolve') return showSharpened(ctx, r, base);
     finishSteps(ctx);
     const idx = r.index.toUpperCase();
     const sources = r.picks.map((p, i) => `<li>${i ? 'After' : 'Before'} ${esc(p.date)} · ${Math.round(p.clear * 100)}% clear<br>${p.scenes.map(s => `<a href="${itemUrl(s)}" target="_blank" rel="noopener">${esc(s)}</a>`).join('<br>')}</li>`).join('');
@@ -454,7 +726,7 @@
 
   // ---------- result overlays ----------
   function clearResult() {
-    ['res-delta', 'res-after', 'res-before'].forEach(id => { if (map.getLayer(id)) map.removeLayer(id); if (map.getSource(id)) map.removeSource(id); });
+    ['res-points', 'res-delta', 'res-after', 'res-before'].forEach(id => { if (map.getLayer(id)) map.removeLayer(id); if (map.getSource(id)) map.removeSource(id); });
     active = null; yearMode();
     const ov = $('#ov-change'); ov.disabled = true; $('#ov-change-d').textContent = 'Ask a question to create one';
   }
@@ -468,7 +740,7 @@
     add('res-before', r.images.before, {});
     add('res-after', r.images.after, {});
     add('res-delta', r.images.delta, { 'raster-opacity': 0.9 }, compare ? 'none' : 'visible');
-    const ov = $('#ov-change'); ov.disabled = false; ov.checked = !compare; $('#ov-change-d').textContent = `${r.index.toUpperCase()} ${r.date0} → ${r.date1}`;
+    const ov = $('#ov-change'); ov.disabled = false; ov.checked = !compare; $('#ov-change-d').textContent = r.index === 'sr' ? 'Consistency with the 10 m image' : `${r.index.toUpperCase()} ${r.date0} → ${r.date1}`;
     $('#timeline').style.display = '';
     compareMode(r);
     if (compare) { tl.value = 0; updateCompare(); tl.focus(); toast('Drag the timeline to blend from before to after.'); }
@@ -514,7 +786,7 @@
       if (!h.ok) throw 0;
       setMode(true);
       const hj = await h.json();
-      if (hj.llm) $('#disclosure span').textContent = `Questions are read by ${hj.llm}, running on this computer. Every number is measured from Sentinel-2 pixels and checked before it’s shown.`;
+      if (hj.llm) $('#disclosure span').textContent = `Questions are read by ${hj.llm}, running on this computer. Every number is measured from satellite and elevation data and checked before it’s shown.`;
       try { EXAMPLES.splice(0, EXAMPLES.length, ...(await (await fetch('/api/examples')).json())); if (!log.querySelector('.msg-user')) renderEmpty(); } catch { /* keep defaults */ }
       const ps = await (await fetch('/api/places')).json();
       places = Object.fromEntries(ps.filter(p => p.name !== 'singapore').map(p => [p.name, p.bbox]));
@@ -529,6 +801,7 @@
     if (e.key === '/' && !typing) { e.preventDefault(); q.focus(); }
     if (e.key === 'Escape' && !lp.hidden) { setLayers(false); lb.focus(); }
     if (e.key === 'Escape' && drawing) { setDrawing(false); $('#btn-draw').focus(); }
+    if (e.key === 'Escape' && measuring) { setMeasuring(false); $('#btn-measure').focus(); }
   });
   let tt;
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 3200); }

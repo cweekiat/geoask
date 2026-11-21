@@ -24,11 +24,11 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, aoi
+from . import __version__, aoi, mgrs
 from .agent import answer, llm
 from .agent.planner import EXAMPLES, Clarify, Plan, Reply, default_planner
 from .models import ModelNotInstalled, list_models
-from .tools import investigate
+from .tools import activity, investigate, superres, terrain
 from .tools.embedding_change import embedding_change
 
 WEB = Path(__file__).resolve().parents[2] / "web"
@@ -71,6 +71,15 @@ def create_app() -> FastAPI:
         """Bundled names as you type; ``online=true`` (on Enter) adds the worldwide geocoder."""
         return [{"name": p.name, "bbox": p.bbox, "source": p.source,
                  "km2": round(p.area_km2, 1)} for p in aoi.search(q, online=online)]
+
+    @app.get("/api/elevation")
+    def elevation(lon: float, lat: float):
+        return {"elevation_m": terrain.elevation_at(lon, lat), "source": terrain.SOURCE,
+                "mgrs": mgrs.to_mgrs(lon, lat) if -80 <= lat <= 84 else None}
+
+    @app.get("/api/line-of-sight")
+    def los(lon1: float, lat1: float, lon2: float, lat2: float, h1: float = 2.0, h2: float = 2.0):
+        return terrain.line_of_sight((lon1, lat1), (lon2, lat2), h1, h2)
 
     @app.get("/api/models")
     def models():
@@ -142,7 +151,18 @@ def _run(tool: str, args: dict):
 
     def work():
         try:
-            if tool == "embedding_change":
+            if tool == "activity":
+                box["result"] = activity.activity(args["place"], args["window"], OUT,
+                                                  progress=q.put, bbox=bbox)
+            elif tool == "super_resolve":
+                box["result"] = superres.super_resolve(args["place"], args["window"], OUT,
+                                                       args["model"], progress=q.put, bbox=bbox)
+            elif tool == "terrain":
+                box["result"] = terrain.terrain(args["place"], OUT, progress=q.put, bbox=bbox)
+            elif tool == "viewshed":
+                box["result"] = terrain.viewshed(args["lon"], args["lat"], OUT, args["radius_m"],
+                                                 args["observer_h"], args["target_h"], progress=q.put)
+            elif tool == "embedding_change":
                 box["result"] = embedding_change(
                     args["place"], args["t0"], args["t1"], OUT, model=args["model"],
                     progress=q.put, bbox=bbox)

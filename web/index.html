@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GeoAsk</title>
-<meta name="description" content="Ask questions about any place on Earth in plain language. Answers computed from satellite imagery, with any sensor, on your own device.">
+<meta name="description" content="A sensor-agnostic platform for geospatial foundation models: satellite imagery analysis, change detection and pattern-of-life detection, asked in plain language.">
 <style>
   :root {
     --bg: #fbfbfa; --fg: #1b1d1f; --muted: #5d636a; --line: #e3e5e8; --card: #ffffff;
@@ -63,7 +63,7 @@
 <body>
 <main>
   <h1>GeoAsk</h1>
-  <p class="lede">Ask questions about any place on Earth in plain language and get answers computed from satellite imagery. It works with any satellite sensor and runs on your own Mac or iPhone, with no API keys.</p>
+  <p class="lede">A sensor-agnostic platform for geospatial foundation models: satellite imagery analysis, change detection and pattern-of-life detection, asked in plain language. It works anywhere on Earth and runs on your own computer, with no API keys.</p>
 
   <p class="q">“How much vegetation did <b>Tengah</b> lose between 2019 and 2026?”</p>
 
@@ -84,21 +84,30 @@
   </figure>
   <p><a class="cta" href="app/">Open the Investigator →</a></p>
 
+  <h2>What it does</h2>
+  <ul class="points">
+    <li><b>Change of any kind</b> with foundation-model embeddings (Clay v1.5), or targeted change in vegetation, water and built-up land.</li>
+    <li><b>Pattern of life at sea.</b> Vessels on every Sentinel-1 radar pass (day, night, through cloud), with SAHI-style slicing, a density map and unusually busy or quiet days flagged.</li>
+    <li><b>Terrain.</b> Elevation, slope, viewshed and line of sight from the Copernicus 30 m elevation model.</li>
+    <li><b>Mapping for field use.</b> MGRS grid, coordinates in decimal, DMS, MGRS and UTM, distance and bearing in degrees and mils, hillshade and 3D terrain.</li>
+    <li><b>Super-resolution for viewing.</b> 10 m to 2.5 m with SEN2SR, physically constrained and shown with a consistency map. Never used for measurement.</li>
+  </ul>
+
   <h2>How it works</h2>
   <ul class="points">
     <li><b>Streams only what it needs.</b> Pixels for your area are read straight from Cloud-Optimized GeoTIFFs in open data buckets using HTTP range requests. No scenes are downloaded and no server is involved.</li>
     <li><b>Works with any sensor.</b> Bands are looked up by wavelength, not by name. Any satellite with a red and a near-infrared band can answer a vegetation question, and a sensor without them gets a clear refusal, not a guess.</li>
-    <li><b>Numbers you can trust.</b> The on-device language model only decides which tools to run. Deterministic code computes every number from native-resolution pixels and cites the exact scenes it used.</li>
-    <li><b>Coming next:</b> Clay foundation-model embeddings (change detection, “find more like this”), 2.5 m super-resolution with a confidence map, and a native iPhone and Mac app.</li>
+    <li><b>Any foundation model.</b> One encoder interface and registry: Clay v1.5 runs today, and Prithvi, DOFA, TerraMind, Galileo and Copernicus-FM are declared. Detectors and super-resolution models plug in the same way.</li>
+    <li><b>Numbers you can trust.</b> A local language model (Qwen 2.5 7B) only decides which tools to run. Deterministic code computes every number from native-resolution pixels, and every number in the written answer is checked against the measurements.</li>
   </ul>
 
   <h2>Try it</h2>
-<pre>uv venv && uv pip install -e .
-geoask change --place tengah --index ndvi \
-  --t0 2019-01-01/2019-12-31 --t1 2026-01-01/2026-11-20</pre>
+<pre>uv venv && uv pip install -e ".[serve]"
+geoask serve        # http://127.0.0.1:8787/app/
+geoask activity --bbox 103.74 1.20 103.86 1.26 --window 2026-08-01/2026-11-20</pre>
   <p class="note">Runs on Linux and macOS. The full plan is in <a href="https://github.com/cweekiat/geoask/blob/main/docs/PLAN.md">docs/PLAN.md</a>.</p>
 
-  <footer>Contains modified Copernicus Sentinel data (2019, 2026), processed by GeoAsk. Sentinel-2 L2A via Element84 Earth Search on AWS Open Data. Place boundaries are approximate.</footer>
+  <footer>Contains modified Copernicus Sentinel data, processed by GeoAsk. Sentinel-2 L2A via Element84 Earth Search on AWS Open Data; Sentinel-1 RTC via Microsoft Planetary Computer. Copernicus GLO-30 DEM © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA. Map data © OpenStreetMap contributors. Place boundaries are approximate.</footer>
 </main>
 <script>
   const cmp = document.getElementById('cmp');

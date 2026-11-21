@@ -23,7 +23,8 @@ from . import geocode
 BBox = tuple[float, float, float, float]  # west, south, east, north (EPSG:4326)
 
 SINGAPORE: BBox = (103.59, 1.15, 104.10, 1.48)
-MAX_KM2 = {"index_change": 250.0, "embedding_change": 80.0}  # keep answers interactive
+MAX_KM2 = {"index_change": 250.0, "embedding_change": 80.0, "terrain": 2500.0,
+           "super_resolve": 25.0, "activity": 400.0}  # keep answers interactive
 
 # Curated analysis areas: sized to the whole development, not OSM's point/label box.
 PLACES: dict[str, BBox] = {
@@ -166,3 +167,9 @@ def area_km2(bbox: BBox) -> float:
     w, s, e, n = bbox
     lat = math.radians((s + n) / 2)
     return (e - w) * 111.32 * math.cos(lat) * (n - s) * 110.57
+
+
+def label(p: Place) -> str:
+    """Display name: curated lower-case keys get title case; geocoded or coordinate names
+    ("Lisbon", "48N UG 7199 4950") are kept as written."""
+    return p.name if any(c.isupper() or c.isdigit() for c in p.name) else p.name.title()

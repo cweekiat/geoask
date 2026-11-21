@@ -1,88 +1,126 @@
 # GeoAsk
 
-**Ask questions about any place on Earth in plain language and get answers computed from satellite imagery.**
-It works with any satellite sensor, uses imagery at about 10 m or sharper, runs locally, and needs
-no API keys.
+**A sensor-agnostic platform for geospatial foundation models: satellite imagery analysis,
+change detection and pattern-of-life detection, asked in plain language.**
 
-> *"How much vegetation did Tengah lose between 2019 and 2025?"*
-> → **N ha** of NDVI loss, a before/after pair, a change map, and the exact Sentinel-2 scenes used.
+GeoAsk turns a question such as *"What has changed at the Tesla Gigafactory Berlin since 2019?"*,
+*"How busy is this anchorage, pass by pass?"* or *"What can a 10 m mast at 48N UG 6387 4975 see?"*
+into a plan, runs measured tools on open satellite data, and answers with numbers, maps and the
+exact scenes used. It works **anywhere on Earth**, with **any sensor** whose bands are described by
+wavelength, and with **any geospatial foundation model** (GFM) that implements one small interface.
+It runs on a laptop with no API keys.
 
-GeoAsk streams just the pixels for your area from open data buckets (Cloud-Optimized GeoTIFFs over
-HTTPS range requests). It looks bands up **by wavelength, not by name**, so the same tools work on
-any sensor with the right bands. The language model only chooses which tools to run; every number
-comes from deterministic code on native-resolution pixels.
+**[Try the Investigator demo →](https://cweekiat.github.io/geoask/app/)** (Demo mode on GitHub
+Pages replays a precomputed answer; run `geoask serve` for live analysis.)
 
-Status: **v0.4: free-form questions about any place or a drawn area.** See [docs/PLAN.md](docs/PLAN.md) for the full plan and
-[docs/DESIGN.md](docs/DESIGN.md) for the app's design and HIG review.
+> **The rule:** a language model chooses which tools to run; deterministic code computes every
+> number from native-resolution pixels. Every number in the written answer is checked against the
+> measurements before it's shown.
 
-**[Try the Investigator demo →](https://cweekiat.github.io/geoask/app/)** It runs in Demo mode on
-GitHub Pages (a precomputed answer). Run it locally for live analysis.
+## What it does
+
+| Capability | How | Data |
+|---|---|---|
+| **Change of any kind** | Foundation-model embeddings compared patch by patch (Clay v1.5 today), Otsu threshold | Sentinel-2 L2A, 10 m |
+| **Targeted change** | Spectral indices: vegetation, water and coastline, built-up land | Sentinel-2 (or any sensor with the bands) |
+| **Pattern of life at sea** | Vessels on every radar pass (CFAR detector with SAHI-style slicing), robust anomaly flags, density map, fixed targets removed | Sentinel-1 RTC, 10 m, day/night, through cloud |
+| **Terrain** | Elevation, slope, relief; viewshed with Earth curvature and refraction; line of sight | Copernicus GLO-30 DEM |
+| **Super-resolution (display only)** | SEN2SR-Lite 10 m → 2.5 m, physically constrained, with a consistency map | Sentinel-2 RGB + NIR |
+| **Mapping** | MGRS grid (zones, 100 km, 10 km, 1 km), coordinates in decimal / DMS / MGRS / UTM, distance and bearing (true and mils), point cards with elevation, coordinate search, hillshade, 3D terrain and buildings | OpenStreetMap, AWS Terrain Tiles |
+| **Any place** | Curated areas → bundled offline gazetteers → OpenStreetMap Nominatim (keyless, cached), or draw a box | Global |
+
+## Architecture
+
+```
+question ─▶ planner (Qwen 2.5 7B via Ollama, or rule-based) ─▶ tool call (validated in Python)
+                                                                   │
+  ┌────────────────────────────── tools ───────────────────────────┴──────────────────────┐
+  │ index_change · embedding_change · activity · terrain · viewshed · super_resolve        │
+  └──────┬──────────────────────┬─────────────────────────┬───────────────────────────────┘
+         │                      │                         │
+  GFM registry            detector interface        super-resolution interface
+  (geoask.models)         + SAHI-style slicing      (geoask.models.superres)
+  Clay v1.5 ✓, Prithvi,   CFAR vessels ✓,           SEN2SR-Lite ✓
+  DOFA, TerraMind,        any SAHI model
+  Galileo, Copernicus-FM  (YOLO, torchvision, HF)
+         │                      │                         │
+  ┌──────┴──────────────────────┴─────────────────────────┴───────────────────────────────┐
+  │ data layer: STAC search → COG window reads → one UTM grid per area → cloud/haze masks │
+  │ instrument profiles (profiles/*.yaml): bands by wavelength, not by name               │
+  └────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Sensor-agnostic.** Tools ask for `red`, `nir`, `swir1` or `vv`; the instrument profile finds the
+  nearest band by wavelength and refuses rather than guesses. Profiles can be generated from STAC
+  metadata, so a new sensor is a YAML file, not code.
+- **Model-agnostic.** A `GeoEncoder` declares the bands it needs (or `bands="any"` for
+  wavelength-aware models such as DOFA), and GeoAsk feeds it. Embeddings are tagged with
+  model@version and never mixed. Third-party models register through the `geoask.models` entry
+  point. Detectors and super-resolution models plug in the same way.
+- **Anywhere on Earth.** Each area is analysed on the WGS84/UTM grid of its own zone, so a 10 m
+  pixel is 10 m everywhere. No national datasets are used.
+- **Low data footprint.** Only the pixels for the area are streamed (HTTP range reads); raw scenes
+  are never stored; the read cache is capped at 500 MB.
 
 ## Quick start (Linux or macOS)
 
 ```bash
 git clone https://github.com/cweekiat/geoask && cd geoask
-uv venv && uv pip install -e .
-geoask scenes --place tengah --start 2025-01-01 --end 2025-11-30
-geoask change --place tengah --index ndvi --t0 2019-01-01/2019-12-31 --t1 2025-01-01/2025-11-30
+uv venv && uv pip install -e ".[serve]"
+ollama pull qwen2.5:7b        # optional: free-form questions, runs locally
+geoask serve                  # → http://127.0.0.1:8787/app/
 ```
 
-Run the **Investigator app** (a Google Maps/Earth-style map with an Ask panel) on live data:
+Optional models:
 
 ```bash
-uv pip install -e ".[serve]"
-ollama pull qwen2.5:7b  # optional: lets it understand free-form questions (free, local)
-geoask serve            # → http://127.0.0.1:8787/app/
+uv pip install -e ".[ml]"
+geoask fetch sen2sr           # super-resolution weights, 3.4 MB, CC0
+python scripts/fetch_clay.py  # Clay v1.5: downloads 5.2 GB once, keeps the 0.6 GB fp16 encoder
 ```
 
-Ask in your own words, about **any place on Earth** or an area you **draw on the map**, e.g. *"What is being built here?"*, *"Has the forest near Tengah shrunk over
-the last few years?"*, *"Did they build anything new at Changi Airport since 2018?"*
-
-- **Qwen 2.5 7B (via Ollama)** reads the question and chooses a tool with simple arguments (topic,
-  place, years). Python checks them and turns them into date windows. Years count only if you gave
-  them; open questions always use the Clay "any change" tool.
-- **Numbers can't be invented:** the model writes the answer from a list of measured facts, and
-  every number in its text is checked against those facts. If any number isn't found, a fixed-wording
-  answer is shown instead, and the app says so.
-- Without Ollama, a rule-based planner takes over automatically.
-
-**Clay foundation model** (optional, about 0.6 GB on disk): ask open questions like *"What changed in
-Tengah since 2019?"* and Clay v1.5 looks for change of any kind, patch by patch:
+From the command line (places are any name on Earth, or `--bbox W S E N`):
 
 ```bash
-uv pip install -e ".[ml,serve]"
-python scripts/fetch_clay.py      # downloads 5.2 GB once, keeps the 0.6 GB fp16 encoder, deletes the rest
+geoask change   --place tengah --index ndvi --t0 2019-01-01/2019-12-31 --t1 2025-01-01/2025-11-30
+geoask activity --bbox 103.74 1.20 103.86 1.26 --window 2026-08-01/2026-11-20
+geoask viewshed --at "48N UG 6387 4975" --radius 3000 --height 10
+geoask terrain  --place "Mount Faber"
+geoask sharpen  --place "marina bay" --window 2026-01-01/2026-11-20
+geoask mgrs 1.3521 103.8198
 ```
 
-| Check (Tengah, 2019-01-01 → 2026-03-25) | Result |
+## Results so far
+
+| Check | Result |
 |---|---|
-| Clay patch distance vs independent NDVI change, ROC-AUC over 2,254 patches (80 m) | **0.926** |
-| Changed area: Clay (any kind) / NDVI (vegetation loss + gain) | 437 ha / 264 ha |
-| Clay v1.5 on an M3 (MPS, fp32): load / four 256 px chips | 3.7 s / ~1.5 s |
+| Clay patch distance vs independent NDVI change, Tengah 2019 → 2026, ROC-AUC over 2,254 patches (80 m) | **0.926** |
+| Tesla Gigafactory Berlin (UTM 33N), Clay, 2019-04-02 → 2025-11-21 | 117 ha of a 349 ha box changed |
+| Vessels per Sentinel-1 pass, western anchorages off Singapore, Aug–Nov 2026 (6 passes) | 18–76 per pass; 2026-10-10 flagged busier |
+| Viewshed, 10 m mast on Bukit Timah, 3 km radius | 1,589 ha (56%) visible |
+| SEN2SR-Lite, Marina Bay: 2.5 m output averaged back to 10 m vs the real pixels | mean difference 0.002 reflectance |
+| UTM and MGRS (Python and the web app's JavaScript) vs PROJ | < 1 mm; MGRS identical on 505 test points, including the Norway/Svalbard zones |
 
-Clay finds more than NDVI because it also sees bare-earth-to-building change, which a vegetation
-index can't. Reproduce with `python scripts/eval_clay_vs_ndvi.py tengah 2019-01-01/2019-12-31 2026-01-01/2026-11-20`.
+## Honest limits
 
-Outputs (PNG quicklooks, a GeoTIFF change layer and `result.json`) go to `out/`. A read cache in
-`~/.cache/geoask` is capped at 500 MB (`GEOASK_CACHE_MB`). Raw scenes are never stored.
-
-## Design
-
-| | |
-|---|---|
-| **Works with any sensor** | Instrument profiles (`profiles/*.yaml`, or generated from STAC metadata) describe the bands by wavelength. |
-| **No keys** | Public STAC catalogues plus COGs on AWS open data and Planetary Computer (anonymous token). |
-| **Trustworthy numbers** | The language model plans; deterministic tools compute; answers cite their scenes and the clear-pixel percentage. |
-| **Foundation models, any of them** | One `GeoEncoder` interface and registry (`geoask.models`). **Clay v1.5 runs today** (a ported encoder, so no Lightning/timm dependencies). Adapters are declared for Prithvi-EO-2.0, DOFA, TerraMind, Galileo and Copernicus-FM, and a weight-free spectral baseline runs too. Fixed-band models get bands matched by wavelength; embeddings are tagged by model so they never mix. Third-party models plug in through the `geoask.models` entry point. |
-| **Cloud and haze checks** | The sensor's own mask, plus an independent spectral haze test (Fmask HOT and whiteness) that re-ranks dates. Vendor masks miss haze over the strait. |
-| **Super-resolution** *(planned)* | 2.5 m view with a consistency-checked confidence map. Display only; never used for measurements. |
-| **Platforms** | `geoask-py` on Linux and macOS; a native iPhone and Mac app optimised for Apple silicon (Core ML, Foundation Models). |
+- 10 m pixels: objects under about 20–30 m (small boats, single houses) are often missed.
+- Radar detections are **bright targets on water**, not identities. There's no AIS or ADS-B.
+- GLO-30 is a *surface* model: heights include buildings and tree canopy, and the viewshed treats
+  them as solid.
+- Super-resolved images are for viewing; GeoAsk never measures from them.
+- Cloud masks miss some haze; dates are re-ranked with an independent spectral haze test.
 
 ## Data and attribution
 
-Contains modified Copernicus Sentinel data, processed by GeoAsk. Sentinel-2 L2A via Element84 Earth
-Search (AWS Open Data); Sentinel-1 RTC via Microsoft Planetary Computer. Place boundaries are
-currently approximate bounding boxes.
+Contains modified Copernicus Sentinel data, processed by GeoAsk (Sentinel-2 L2A via Element84 Earth
+Search on AWS Open Data; Sentinel-1 RTC via Microsoft Planetary Computer). Copernicus GLO-30 DEM:
+© DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by
+the European Union and ESA. Place names and map data © OpenStreetMap contributors (ODbL). SEN2SR
+(ESA OpenSR / TACO foundation), CC0-1.0. Yearly mosaics: Sentinel-2 cloudless by EOX. High-resolution
+basemap © Esri, Maxar (display only). Terrain tiles: Mapzen / AWS. Clay v1.5 (Apache-2.0).
+
+Design notes: [docs/PLAN.md](docs/PLAN.md) (scope and decisions) and [docs/DESIGN.md](docs/DESIGN.md)
+(interface and Human Interface Guidelines review).
 
 ## License
 

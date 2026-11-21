@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Protocol
 
-from .. import aoi
+from .. import aoi, mgrs
 from . import llm
 
 
@@ -76,7 +76,11 @@ EXAMPLES = [
 CAPABILITIES = (
     "I can measure how any area on Earth has changed between two years from Sentinel-2 "
     "satellite imagery: vegetation, water and coastline, built-up land, or change of any kind "
-    "using the Clay foundation model. Name a place or draw a box on the map, and give the years."
+    "using the Clay foundation model. I can also describe terrain (elevation and slope) and work "
+    "out what can be seen from a point, from the Copernicus 30 m elevation model, and count vessels "
+    "pass by pass on Sentinel-1 radar (pattern of life at sea), and show a "
+    "sharpened 2.5 m view of an area (super-resolution, for viewing only). Name a place, "
+    "give coordinates (lat/lon, UTM or MGRS) or draw a box on the map."
 )
 
 
@@ -106,7 +110,7 @@ def make_plan(tool: str, place: aoi.Place, t0: str, t1: str, planner: str,
         aoi.check_size(place, tool)
     except ValueError as e:  # too big: show the place so the user can draw part of it
         return Clarify(str(e), bbox=place.bbox)
-    where = "the area you drew" if place.source == "drawn" else place.name.title()
+    where = _label(place)
     args = {"place": None if place.source == "drawn" else place.name, "t0": t0, "t1": t1}
     if place.source != "curated":  # tools get the exact box; names are only labels
         args["bbox"] = list(place.bbox)
@@ -122,6 +126,117 @@ def make_plan(tool: str, place: aoi.Place, t0: str, t1: str, planner: str,
 _AFTER_PREP = re.compile(
     r"\b(?:in|at|around|near|of|over|for)\s+(?:the\s+)?"
     r"([A-Z][\w'.-]*(?:[ ,]+(?:[A-Z][\w'.-]*|de|da|do|del|di|la|le|of|on|upon|am|an))*)")
+
+
+_COORD_PATTERNS = [
+    re.compile(r"-?\d{1,2}\.\d+\s*,\s*-?\d{1,3}\.\d+"),  # lat, lon
+    re.compile(r"\b\d{1,2}\s?[C-HJ-NP-X]\s?[A-HJ-NP-Z][A-HJ-NP-V](?:\s?\d{1,5}\s?\d{1,5})?\b", re.IGNORECASE),
+    re.compile(r"\b\d{1,2}\s?[NS]\s+\d{5,7}(?:\.\d+)?\s*m?E?\s+\d{6,8}(?:\.\d+)?\s*m?N?\b", re.IGNORECASE),
+]
+
+
+def find_point_in_text(q: str) -> tuple[float, float] | None:
+    """A coordinate written in the question (lat/lon, MGRS or UTM) → (lon, lat)."""
+    for pat in _COORD_PATTERNS:
+        for m in pat.finditer(q):
+            if (pt := mgrs.parse_coordinates(m.group(0))) is not None:
+                return pt
+    return None
+
+
+def point_plan(tool: str, question: str, planner: str, place: aoi.Place | None,
+               radius_km: float | None = None, height_m: float | None = None) -> Plan | Clarify:
+    """Viewshed: the observer is a coordinate in the question, else the centre of the place."""
+    pt = find_point_in_text(question)
+    if pt is None and place is not None:
+        w, s, e, n = place.bbox
+        pt = ((w + e) / 2, (s + n) / 2)
+    if pt is None:
+        return Clarify("Where should the observer stand? Give coordinates (lat/lon, UTM or MGRS), "
+                       "a place, or draw a box and I'll use its centre.", EXAMPLES)
+    said = {float(x) for x in re.findall(r"\d+(?:\.\d+)?", question)}
+    if radius_km is None and (m := re.search(r"(\d+(?:\.\d+)?)\s*(km|kilomet)", question, re.IGNORECASE)):
+        radius_km = float(m.group(1))
+    if height_m is None and (m := re.search(r"(\d+(?:\.\d+)?)\s*m(?:etres?|eters?)?\s+"
+                                            r"(?:mast|tower|high|tall|observer|above)", question, re.IGNORECASE)):
+        height_m = float(m.group(1))
+    radius_km = radius_km if radius_km in said else 5.0  # only numbers the user actually wrote
+    height_m = height_m if height_m in said else 2.0
+    args = {"lon": round(pt[0], 6), "lat": round(pt[1], 6), "radius_m": radius_km * 1000,
+            "observer_h": height_m, "target_h": 2.0}
+    return Plan(tool, args, f"Work out what a {height_m:g} m observer at "
+                f"{mgrs.to_mgrs(*pt, 4)} can see within {radius_km:g} km, from the Copernicus "
+                "30 m elevation model (it includes buildings and trees).", planner)
+
+
+def terrain_plan(place: aoi.Place, planner: str) -> Plan | Clarify:
+    try:
+        aoi.check_size(place, "terrain")
+    except ValueError as e:
+        return Clarify(str(e), bbox=place.bbox)
+    where = _label(place)
+    args = {"place": None if place.source == "drawn" else place.name, "bbox": list(place.bbox)}
+    return Plan("terrain", args, f"Measure elevation and slope over {where} from the Copernicus "
+                "30 m elevation model.", planner)
+
+
+_SHARPEN = re.compile(r"\b(sharpen|sharper|super[- ]?res\w*|enhance|upscal\w*|higher[- ]res\w*|"
+                      r"high[- ]res\w*|2\.5 ?m|clearer image|more detail)\b", re.IGNORECASE)
+
+
+def sharpen_plan(place: aoi.Place, question: str, today: date, planner: str) -> Plan | Clarify:
+    try:
+        aoi.check_size(place, "super_resolve")
+    except ValueError as e:
+        return Clarify(str(e), bbox=place.bbox)
+    years = sorted({int(y) for y in re.findall(r"\b(20[12]\d)\b", question)})
+    _, win = windows(None, None, today) if not years else windows(years[-1] - 1, years[-1], today)
+    args = {"place": None if place.source == "drawn" else place.name, "bbox": list(place.bbox),
+            "window": win, "model": "sen2sr-lite"}
+    return Plan("super_resolve", args, f"Sharpen the clearest Sentinel-2 image of {_label(place)} "
+                f"in {win} from 10 m to 2.5 m with SEN2SR, for viewing only (never measured).",
+                planner)
+
+
+_MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+_MONTH_YEAR = re.compile(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(20[12]\d)\b",
+                         re.IGNORECASE)
+_ACTIVITY = re.compile(r"\b(ships?|vessels?|boats?|tankers?|maritime|shipping|anchorage|"
+                       r"port activity|traffic at sea|pattern[- ]of[- ]life|how busy|busier|"
+                       r"activity)\b", re.IGNORECASE)
+
+
+def activity_plan(place: aoi.Place, question: str, today: date, planner: str) -> Plan | Clarify:
+    try:
+        aoi.check_size(place, "activity")
+    except ValueError as e:
+        return Clarify(str(e), bbox=place.bbox)
+    years = sorted({int(y) for y in re.findall(r"\b(20[12]\d)\b", question)})
+    since = _MONTH_YEAR.search(question)
+    if since:  # "since August 2026" → from the 1st of that month to today
+        m = _MONTHS.index(since.group(1)[:3].lower()) + 1
+        win = f"{int(since.group(2))}-{m:02d}-01/{today.isoformat()}"
+    elif years and years[0] < today.year:
+        win = f"{years[0]}-01-01/{min(years[-1], today.year - 1)}-12-31"
+    else:
+        win = windows(None, None, today)[1]
+    args = {"place": None if place.source == "drawn" else place.name, "bbox": list(place.bbox),
+            "window": win}
+    return Plan("activity", args, f"Count vessels on Sentinel-1 radar passes over "
+                f"{_label(place)} in {win} (SAHI-style slicing, CFAR detector), then flag "
+                "unusually busy or quiet days.", planner)
+
+
+_TERRAIN = re.compile(r"\b(elevation|terrain|slope|steep|altitude|how high|hill|mountain|"
+                      r"relief|contour|height above sea)\b", re.IGNORECASE)
+_VISIBILITY = re.compile(r"\b(viewshed|line of sight|visible from|can (?:be )?see|seen from|"
+                         r"observation post|overlook|vantage)\b", re.IGNORECASE)
+
+
+def _label(place: aoi.Place) -> str:
+    if place.source == "drawn":
+        return "the area you drew"
+    return place.name if any(c.isupper() or c.isdigit() for c in place.name) else place.name.title()
 
 
 def find_place_in_text(q: str) -> aoi.Place | None:
@@ -163,11 +278,24 @@ class RuleBasedPlanner:
         q = question.lower()
         today = today or date.today()
         try:
-            place = aoi.from_bbox(selection) if selection else find_place_in_text(question)
+            pt = None if selection else find_point_in_text(question)
+            place = (aoi.from_bbox(selection) if selection else
+                     None if pt else find_place_in_text(question))
         except ValueError as e:
             return Clarify(str(e))
+        if _VISIBILITY.search(q):
+            return point_plan("viewshed", question, self.name, place)
+        if place is None and (pt := find_point_in_text(question)):
+            place = aoi.from_bbox((pt[0] - 0.01, pt[1] - 0.01, pt[0] + 0.01, pt[1] + 0.01),
+                                  mgrs.to_mgrs(*pt, 4), "named")
         if place is None:
             return Clarify(f"{CAPABILITIES} Which area should I look at?", EXAMPLES)
+        if _TERRAIN.search(q):
+            return terrain_plan(place, self.name)
+        if _ACTIVITY.search(q):
+            return activity_plan(place, question, today, self.name)
+        if _SHARPEN.search(q):
+            return sharpen_plan(place, question, today, self.name)
         index = next((i for i, words in _INDEX_WORDS if any(w in q for w in words)), None)
         years = sorted({int(y) for y in re.findall(r"\b(20[12]\d)\b", q)})
         t0, t1 = windows(years[0] if years else None,
@@ -196,6 +324,38 @@ _TOOLS = [
             "start_year": {"type": "integer", "description": "Earlier year, e.g. 2019"},
             "end_year": {"type": "integer", "description": "Later year; omit for 'now'"},
         }}}},
+    {"type": "function", "function": {
+        "name": "describe_terrain",
+        "description": "Elevation, height, slope, hills or relief of an area (not change over "
+                       "time).",
+        "parameters": {"type": "object", "properties": {
+            "place": {"type": "string", "description": "Place name; empty if the user drew a "
+                      "box or gave coordinates."}}}}},
+    {"type": "function", "function": {
+        "name": "visibility_from",
+        "description": "What can be seen from a point: viewshed, line of sight, observation "
+                       "or vantage points.",
+        "parameters": {"type": "object", "properties": {
+            "place": {"type": "string", "description": "Place to stand at; empty if the user "
+                      "gave coordinates or drew a box."},
+            "radius_km": {"type": "number", "description": "How far to look; only if the user "
+                          "said"},
+            "observer_height_m": {"type": "number", "description": "Eye or mast height in "
+                                  "metres; only if the user said"}}}}},
+    {"type": "function", "function": {
+        "name": "count_activity",
+        "description": "Pattern of life at sea: how many ships or vessels are in an area on each "
+                       "satellite radar pass, how busy it is, and which days were unusual.",
+        "parameters": {"type": "object", "properties": {
+            "place": {"type": "string", "description": "Port, strait, anchorage or sea area; "
+                      "empty if the user drew a box."}}}}},
+    {"type": "function", "function": {
+        "name": "sharpen_image",
+        "description": "Show a sharper, higher-resolution (super-resolved, 2.5 m) image of an "
+                       "area, for viewing. Not for measuring change.",
+        "parameters": {"type": "object", "properties": {
+            "place": {"type": "string", "description": "Place name; empty if the user drew a box."},
+            "year": {"type": "integer", "description": "Only if the user named a year"}}}}},
     {"type": "function", "function": {
         "name": "cannot_answer_from_imagery",
         "description": "Use when the question isn't about how a place looks or changed "
@@ -240,6 +400,50 @@ class LLMPlanner:
                 return self._fallback(question, today, selection, "unreadable arguments")
         if fn["name"] == "cannot_answer_from_imagery":
             return Reply(f"{CAPABILITIES}", self.name)
+        if fn["name"] == "measure_change" and _VISIBILITY.search(question):
+            fn, args = {"name": "visibility_from"}, {}  # deterministic override, like _OPEN
+        if fn["name"] == "measure_change" and _SHARPEN.search(question) and not _OPEN.search(question):
+            fn = {"name": "sharpen_image"}
+        if fn["name"] == "measure_change" and _ACTIVITY.search(question) and not _OPEN.search(question):
+            fn = {"name": "count_activity"}
+        if fn["name"] == "count_activity":
+            try:
+                place = (aoi.from_bbox(selection) if selection else
+                         aoi.resolve(str(args["place"])) if args.get("place") else
+                         find_place_in_text(question))
+            except (KeyError, ValueError) as e:
+                return Clarify(str(e).strip("'\""), EXAMPLES)
+            if place is None:
+                return Clarify(f"{CAPABILITIES} Which area should I look at?", EXAMPLES)
+            return activity_plan(place, question, today, self.name)
+        if fn["name"] == "sharpen_image":
+            try:
+                place = (aoi.from_bbox(selection) if selection else
+                         aoi.resolve(str(args["place"])) if args.get("place") else
+                         find_place_in_text(question))
+            except (KeyError, ValueError) as e:
+                return Clarify(str(e).strip("'\""), EXAMPLES)
+            if place is None:
+                return Clarify(f"{CAPABILITIES} Which area should I look at?", EXAMPLES)
+            return sharpen_plan(place, question, today, self.name)
+        if fn["name"] in ("describe_terrain", "visibility_from"):
+            try:
+                place = (aoi.from_bbox(selection) if selection else
+                         aoi.resolve(str(args["place"])) if args.get("place") else
+                         find_place_in_text(question))
+            except (KeyError, ValueError) as e:
+                if fn["name"] == "describe_terrain" or not find_point_in_text(question):
+                    return Clarify(str(e).strip("'\""), EXAMPLES)
+                place = None
+            if fn["name"] == "visibility_from":
+                return point_plan("viewshed", question, self.name, place,
+                                  _num(args.get("radius_km")), _num(args.get("observer_height_m")))
+            if place is None and (pt := find_point_in_text(question)):
+                place = aoi.from_bbox((pt[0] - 0.01, pt[1] - 0.01, pt[0] + 0.01, pt[1] + 0.01),
+                                      mgrs.to_mgrs(*pt, 4), "named")
+            if place is None:
+                return Clarify(f"{CAPABILITIES} Which area should I look at?", EXAMPLES)
+            return terrain_plan(place, self.name)
         topic = str(args.get("topic", "any")).lower()
         if _OPEN.search(question):  # deterministic override: open questions → any change
             topic = "any"
@@ -275,6 +479,13 @@ class LLMPlanner:
 _OPEN = re.compile(r"what(?:'s| is| has)? (?:been |being )?(?:built|chang|happen)|"
                    r"anything (?:new|unusual|different)|unusual|what changed", re.IGNORECASE)
 _RELATIVE = re.compile(r"\b(last|past|recent|ago|since|over the)\b", re.IGNORECASE)
+
+
+def _num(v) -> float | None:
+    try:
+        return float(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _int(v) -> int | None:

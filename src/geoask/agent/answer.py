@@ -16,10 +16,46 @@ _NUM = re.compile(r"(?<![\w.])-?\d[\d,]*(?:\.\d+)?")
 
 
 def _place(r: dict) -> str:
-    return "the area you drew" if r.get("place_source") == "drawn" else r["place"].title()
+    if r.get("place_source") == "drawn":
+        return "the area you drew"
+    return r["place"] if any(c.isupper() for c in r["place"]) else r["place"].title()
 
 
 def facts(r: dict) -> list[str]:
+    if r["tool"] == "terrain":
+        return [f"Area: {_place(r)}", ("Source: Copernicus 30 m elevation model (a surface model: "
+                "it includes buildings and tree canopy)"),
+                f"Lowest elevation: {r['elev_min_m']:.0f} m", f"Highest elevation: {r['elev_max_m']:.0f} m",
+                f"Mean elevation: {r['elev_mean_m']:.0f} m", f"Relief (highest minus lowest): {r['relief_m']:.0f} m",
+                f"Mean slope: {r['slope_mean_deg']:.0f} degrees",
+                f"Area steeper than 15 degrees: {r['steep_ha']:.0f} ha",
+                f"Area steeper than 30 degrees: {r['very_steep_ha']:.0f} ha",
+                f"Analysed area: {r['area_ha']:.0f} ha"]
+    if r["tool"] == "activity":
+        out = [f"Area: {_place(r)}", "Sensor: Sentinel-1 radar (sees through cloud, day and night)",
+               f"Radar passes analysed: {r['passes']}, from {r['date0']} to {r['date1']}",
+               f"Vessels per pass: typically {r['median_count']:.0f}, average {r['mean_count']:.0f}",
+               f"Busiest pass: {r['max_date']} with {r['max_count']} vessels",
+               "Only vessels longer than about 20-30 m are reliably seen; their identity is unknown"]
+        for u in r["unusual"]:
+            out.append(f"Unusually {u['kind']} pass: {u['date']} with {u['count']} vessels")
+        if not r["unusual"]:
+            out.append("No pass was unusually busy or quiet")
+        return out
+    if r["tool"] == "super_resolve":
+        return [f"Area: {_place(r)}", f"Image date: {r['date']}",
+                f"Sharpened from {r['grid']['res_m']:g} m to {r['out_res_m']:g} m with {r['model']}",
+                "For viewing only: the added detail is a model's estimate and is never measured",
+                ("Mean difference from the real 10 m pixels after averaging back: "
+                f"{r['consistency_mean']:.3f} reflectance")]
+    if r["tool"] == "viewshed":
+        pct = 100 * r["visible_ha"] / r["area_ha"] if r["area_ha"] else 0
+        return [("Source: Copernicus 30 m elevation model (it includes buildings and trees, which "
+                "block views)"), f"Observer height above the surface: {r['observer_h_m']:g} m",
+                f"Target height: {r['target_h_m']:g} m", f"Radius: {r['radius_m'] / 1000:g} km",
+                f"Surface elevation at the observer: {r['observer_elev_m']:.0f} m",
+                f"Visible area: {r['visible_ha']:.0f} ha",
+                f"Share of the circle that is visible: {pct:.0f}%"]
     where = _place(r)
     pct = 100 * r.get("compared_fraction", 0)
     out = [f"Area: {where}", f"Before date: {r['date0']}", f"After date: {r['date1']}",
@@ -39,6 +75,26 @@ def facts(r: dict) -> list[str]:
 
 
 def template_answer(r: dict) -> str:
+    if r["tool"] == "terrain":
+        return (f"{_place(r)} ranges from {r['elev_min_m']:.0f} m to {r['elev_max_m']:.0f} m "
+                f"(mean {r['elev_mean_m']:.0f} m). Mean slope is {r['slope_mean_deg']:.0f}°, and "
+                f"{r['steep_ha']:.0f} ha is steeper than 15°. Heights include buildings and trees.")
+    if r["tool"] == "activity":
+        unusual = "; ".join(f"{u['date']} was unusually {u['kind']} ({u['count']})"
+                            for u in r["unusual"]) or "no pass stood out"
+        return (f"Over {r['passes']} Sentinel-1 radar passes from {r['date0']} to {r['date1']}, "
+                f"{_place(r)} typically had {r['median_count']:.0f} vessels in view (busiest: "
+                f"{r['max_count']} on {r['max_date']}). Unusual days: {unusual}. Small craft are "
+                "missed, and radar can't tell who the vessels are.")
+    if r["tool"] == "super_resolve":
+        return (f"Here is {_place(r)} on {r['date']}, sharpened from {r['grid']['res_m']:g} m to "
+                f"{r['out_res_m']:g} m with {r['model']}. It's for viewing only: the extra detail "
+                "is the model's estimate, consistent with the real pixels but not measured.")
+    if r["tool"] == "viewshed":
+        pct = 100 * r["visible_ha"] / r["area_ha"] if r["area_ha"] else 0
+        return (f"A {r['observer_h_m']:g} m observer here can see about {r['visible_ha']:.0f} ha "
+                f"({pct:.0f}%) of the ground within {r['radius_m'] / 1000:g} km. Buildings and "
+                "trees in the 30 m elevation model block views; small obstacles are missed.")
     where = _place(r)
     if r["tool"] == "embedding_change":
         share = 100 * r["changed_ha"] / r["area_ha"] if r.get("area_ha") else 0

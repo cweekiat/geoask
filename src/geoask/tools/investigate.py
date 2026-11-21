@@ -34,7 +34,7 @@ def index_change(
     started = time.time()
     prof = load_profile(sensor)
     pl = aoi.place_for(place, bbox)
-    where = "the selected area" if pl.source == "drawn" else pl.name.title()
+    where = "the selected area" if pl.source == "drawn" else aoi.label(pl)
     aoi.check_size(pl, "index_change")
     grid = grid_for(pl.bbox, prof.gsd_m)
     targets = list(dict.fromkeys(spectral.targets_for(index) + ["red", "green", "blue"]))
