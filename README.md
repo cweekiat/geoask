@@ -17,7 +17,7 @@ Status: **v0.1, early build.** See [docs/PLAN.md](docs/PLAN.md) for the full pla
 ## Quick start (Linux or macOS)
 
 ```bash
-git clone https://github.com/<you>/geoask && cd geoask
+git clone https://github.com/cweekiat/geoask && cd geoask
 uv venv && uv pip install -e .
 geoask scenes --place tengah --start 2025-01-01 --end 2025-11-30
 geoask change --place tengah --index ndvi --t0 2019-01-01/2019-12-31 --t1 2025-01-01/2025-11-30
