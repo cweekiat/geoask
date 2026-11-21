@@ -1,0 +1,16 @@
+# Sentinel-1 IW radiometrically terrain-corrected gamma0 (Microsoft Planetary Computer).
+# Values are linear power. Planetary Computer assets need an anonymous SAS token (no account).
+id: sentinel-1-rtc
+platform: Sentinel-1
+modality: sar
+stac:
+  url: https://planetarycomputer.microsoft.com/api/stac/v1
+  collection: sentinel-1-rtc
+  signing: planetary-computer
+gsd_m: 10
+nodata: -32768
+bands:
+  - {name: vv, asset: vv, polarization: VV, center_um: 55465.76, gsd_m: 10}   # C-band 5.405 GHz -> 5.55 cm
+  - {name: vh, asset: vh, polarization: VH, center_um: 55465.76, gsd_m: 10}
+default_scale: 1.0
+default_offset: 0.0

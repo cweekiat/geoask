@@ -1,0 +1,33 @@
+# Sentinel-2 MSI Level-2A surface reflectance (Element84 Earth Search v1).
+# Wavelengths: ESA S2 MSI spectral response (S2A/S2B/S2C means).
+# scale/offset are defaults; values found in the STAC item's raster:bands override them.
+id: sentinel-2-l2a
+platform: Sentinel-2
+modality: optical
+stac:
+  url: https://earth-search.aws.element84.com/v1
+  collection: sentinel-2-l2a
+  cloud_property: eo:cloud_cover
+  # Earth Search harmonises baseline >= 04.00 pixels already; don't apply raster:bands offset twice
+  offset_applied_property: earthsearch:boa_offset_applied
+gsd_m: 10
+nodata: 0
+bands:
+  - {name: coastal,  asset: coastal,  center_um: 0.443, width_um: 0.021, gsd_m: 60}
+  - {name: blue,     asset: blue,     center_um: 0.490, width_um: 0.066, gsd_m: 10}
+  - {name: green,    asset: green,    center_um: 0.560, width_um: 0.036, gsd_m: 10}
+  - {name: red,      asset: red,      center_um: 0.665, width_um: 0.031, gsd_m: 10}
+  - {name: rededge1, asset: rededge1, center_um: 0.704, width_um: 0.015, gsd_m: 20}
+  - {name: rededge2, asset: rededge2, center_um: 0.740, width_um: 0.015, gsd_m: 20}
+  - {name: rededge3, asset: rededge3, center_um: 0.783, width_um: 0.020, gsd_m: 20}
+  - {name: nir,      asset: nir,      center_um: 0.842, width_um: 0.106, gsd_m: 10}
+  - {name: nir08,    asset: nir08,    center_um: 0.865, width_um: 0.021, gsd_m: 20}
+  - {name: nir09,    asset: nir09,    center_um: 0.945, width_um: 0.020, gsd_m: 60}
+  - {name: swir16,   asset: swir16,   center_um: 1.610, width_um: 0.091, gsd_m: 20}
+  - {name: swir22,   asset: swir22,   center_um: 2.190, width_um: 0.175, gsd_m: 20}
+default_scale: 0.0001
+default_offset: 0.0
+cloud_mask:
+  asset: scl
+  # SCL classes: 0 nodata, 1 saturated, 3 cloud shadow, 8/9 cloud med/high, 10 cirrus
+  invalid: [0, 1, 3, 8, 9, 10]

@@ -1,0 +1,30 @@
+{
+  "index": "ndvi",
+  "date0": "2019-12-27",
+  "date1": "2026-03-25",
+  "mean0": 0.498,
+  "mean1": 0.433,
+  "loss_ha": 187.11,
+  "gain_ha": 36.86,
+  "compared_fraction": 1.0,
+  "area_ha": 1488.51,
+  "sensor": "sentinel-2-l2a",
+  "scenes0": [
+    "S2A_48NUG_20191227_0_L2A",
+    "S2A_48NUG_20191227_1_L2A"
+  ],
+  "scenes1": [
+    "S2C_48NUG_20260325_0_L2A"
+  ],
+  "place": "tengah",
+  "place_bbox_approximate": true,
+  "grid": {
+    "crs": "EPSG:32648",
+    "res_m": 10.0,
+    "shape": [
+      333,
+      447
+    ]
+  },
+  "seconds": 8.3
+}

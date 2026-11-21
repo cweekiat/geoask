@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "GeoAsk tool contracts shared by every client (Python, Swift, web). The LLM plans calls against these; tools compute.",
+  "tools": [
+    {
+      "name": "find_scenes",
+      "description": "List acquisition dates for a place, ranked by clear pixels inside the place.",
+      "parameters": {
+        "type": "object",
+        "required": ["place", "start", "end"],
+        "properties": {
+          "place": {"type": "string"},
+          "sensor": {"type": "string", "default": "sentinel-2-l2a"},
+          "start": {"type": "string", "format": "date"},
+          "end": {"type": "string", "format": "date"}
+        }
+      }
+    },
+    {
+      "name": "index_change",
+      "description": "Change in a spectral index between the clearest dates of two time windows. Returns hectares of loss/gain and means.",
+      "parameters": {
+        "type": "object",
+        "required": ["place", "index", "t0", "t1"],
+        "properties": {
+          "place": {"type": "string"},
+          "index": {"type": "string", "enum": ["ndvi", "ndwi", "mndwi", "ndbi"]},
+          "t0": {"type": "string", "description": "start/end dates, e.g. 2019-01-01/2019-12-31"},
+          "t1": {"type": "string"},
+          "sensor": {"type": "string", "default": "sentinel-2-l2a"}
+        }
+      }
+    }
+  ]
+}
