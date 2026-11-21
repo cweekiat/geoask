@@ -101,6 +101,17 @@ def test_settings_round_trip(tmp_path, monkeypatch):
     assert Path(settings.path()).name == ".geoask.json"
 
 
+def test_enhancer_needs_a_downloaded_model(tmp_path, monkeypatch):
+    import pytest
+
+    from geoask.models import enhance
+
+    monkeypatch.setattr(enhance, "MODELS_DIR", tmp_path)
+    assert not any(e["installed"] for e in enhance.status())
+    with pytest.raises(ValueError, match="Download one in Settings"):
+        enhance.enhance_photo(_photo(), "", tmp_path)
+
+
 def test_text_form_tool_calls_from_small_models_are_recovered():
     from geoask.agent.providers import text_tool_calls
 

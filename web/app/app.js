@@ -692,7 +692,7 @@
         break;
       case 'usage': {
         const t = ev.tokens || {};
-        ctx.costText = ev.cost_usd ? `≈ $${ev.cost_usd.toFixed(2)}` : '';
+        ctx.costText = !ev.cost_usd ? '' : ev.cost_usd < 0.005 ? '< $0.01' : `≈ $${ev.cost_usd.toFixed(2)}`;
         ctx.tokens = `${(t.input_tokens || 0).toLocaleString()} tokens in, ${(t.output_tokens || 0).toLocaleString()} out`;
         ctx.model = ev.model || ctx.model;
         if (ctx.trace) traceCount(ctx);
@@ -1038,7 +1038,7 @@
     const card = document.createElement('div'); card.className = 'card';
     card.innerHTML = `<div class="kicker warn">${icon('sparkle', 'icon sm')}AI-generated detail · not evidence</div>
       <h3>Enhanced photo ${r.photo ? r.photo : ''}</h3>
-      <div class="when">${esc(r.model)} · ×${r.scale}${r.guidance ? ` · “${esc(r.guidance)}”` : ''}</div>
+      <div class="when">${esc(r.model)}${r.model.includes('×') ? '' : ` · ×${r.scale}`}${r.size ? ` · ${r.size[0]}×${r.size[1]} px` : ''}${r.guidance ? ` · “${esc(r.guidance)}”` : ''}</div>
       <div class="cmp" style="--x:50%"><img src="${base + r.images.after}" alt="Enhanced (generated)"><img class="top" src="${base + r.images.before}" alt="Original, upscaled"><span class="tag l">Original</span><span class="tag r">Generated</span>
         <input type="range" min="0" max="100" value="50" aria-label="Compare original and generated"></div>
       <div class="actions"><a class="btn" href="${base + r.images.after}" download>Download</a></div>

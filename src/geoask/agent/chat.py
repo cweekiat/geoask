@@ -254,7 +254,7 @@ def run_turn(provider, sid: str, text: str, new_photos: list[Photo], selection, 
     s["messages"].append({"role": "user", "content": parts})
     s["sources"].append(text or "")
     for p in new_photos:
-        s["sources"].append(json.dumps(p.meta))
+        s["sources"].append(f"Photo {p.index} " + json.dumps(p.meta))  # photo numbers are known, not measured
     usage_total = {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
     pool = ThreadPoolExecutor(4)
     try:

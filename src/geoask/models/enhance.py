@@ -29,6 +29,7 @@ ENHANCERS = {
     "realesrgan-x4": {
         "title": "Real-ESRGAN ×4", "licence": "BSD-3-Clause", "guidance": False, "size_mb": 64,
         "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+        "sha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
         "file": "realesrgan/RealESRGAN_x4plus.pth"},
     "sd-x4-upscaler": {
         "title": "Stable Diffusion ×4 Upscaler", "licence": "CreativeML Open RAIL++-M", "guidance": True,
@@ -74,6 +75,15 @@ def fetch(eid: str, progress: Progress = lambda _m: None) -> Path:
                 if time.time() - last > 0.5:
                     progress(f"Downloading {spec['title']}: {done / 1e6:.0f} of {total / 1e6:.0f} MB")
                     last = time.time()
+        import hashlib
+
+        h = hashlib.sha256()
+        with open(part, "rb") as f:
+            while chunk := f.read(1 << 20):
+                h.update(chunk)
+        if h.hexdigest() != spec["sha256"]:
+            part.unlink()  # a corrupted or tampered partial download is never installed
+            raise ValueError(f"{spec['title']}: the download's checksum didn't match, so it wasn't installed.")
         part.replace(dest)
         return dest
     from huggingface_hub import snapshot_download  # installed with the `enhance` extra
