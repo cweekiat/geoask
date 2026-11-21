@@ -2,108 +2,266 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GeoAsk</title>
-<meta name="description" content="Ask a map questions in plain language and get answers measured from satellite imagery, anywhere on Earth, with any sensor and any geospatial foundation model.">
-<meta property="og:image" content="media/change.jpg">
+<meta name="description" content="Where was this photo taken? GeoAsk's agent reads the clues, checks them against open maps, imagery and terrain, and answers with likely areas. Then ask the map anything else. Works with Claude, local Ollama models or any OpenAI-compatible model.">
+<meta property="og:title" content="GeoAsk: where was this photo taken?">
+<meta property="og:image" content="media/locate.jpg">
+<meta name="theme-color" content="#070b12">
 <style>
-  :root { color-scheme: dark; --bg: #070b12; --fg: #e8eef6; --muted: #a9b7c8; --dim: #8193a8; --line: rgba(148,172,204,.18);
-    --card: #0f1724; --accent: #5aa9ff; --btn: #1f6fe5; }
+  :root {
+    color-scheme: dark;
+    --bg: #070b12; --surface: #0f1724; --surface-2: #162236;
+    --ink: #e8eef6;      /* 16.4:1 on --bg */
+    --ink-2: #a9b7c8;    /*  9.6:1 on --bg */
+    --ink-3: #8193a8;    /*  6.3:1 on --bg */
+    --line: rgba(148,172,204,.16); --line-2: rgba(148,172,204,.3);
+    --accent: #5aa9ff;   /*  7.9:1 on --bg */
+    --btn: #1f6fe5;      /* white text 4.7:1 */
+    --warn: #f5b84a; --gain: #34d1c4;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --r: 16px;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg);
-    font: 16px/1.55 -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 1080px; margin: 0 auto; padding: 48px 16px 72px; }
-  header h1 { font-size: clamp(2.2rem, 5vw, 3.2rem); letter-spacing: -0.02em; margin: 0 0 10px; }
-  .lede { font-size: 1.2rem; color: var(--muted); max-width: 720px; margin: 0; }
-  .ctas { display: flex; gap: 10px; flex-wrap: wrap; margin: 22px 0 0; }
-  .cta { display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 999px; background: var(--btn); color: #fff; text-decoration: none; font-weight: 600; }
-  .cta.ghost { background: transparent; border: 1px solid rgba(148,172,204,.34); color: var(--fg); }
-  .cta:focus-visible { outline: 2px solid #8cc2ff; outline-offset: 2px; }
-  video, .shot { width: 100%; display: block; border-radius: 14px; border: 1px solid var(--line); background: #000; }
-  .hero { margin-top: 32px; }
-  .caption { color: var(--dim); font-size: .9rem; margin: 8px 2px 0; }
-  h2 { font-size: 1.4rem; margin: 64px 0 18px; letter-spacing: -0.01em; }
-  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
-  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
-  .feat h3 { font-size: 1.05rem; margin: 12px 0 4px; }
-  .feat p { margin: 0; color: var(--muted); font-size: .95rem; }
-  .feat b { color: var(--fg); font-weight: 600; }
-  .how { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-  @media (max-width: 760px) { .how { grid-template-columns: 1fr; } }
-  .how div { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
-  .how h3 { margin: 0 0 4px; font-size: 1rem; }
-  .how p { margin: 0; color: var(--muted); font-size: .92rem; }
-  pre { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; overflow-x: auto;
-    font: .88rem/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
-  footer { margin-top: 64px; color: var(--dim); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 16px; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 17px/1.55 -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  /* Point of view: a faint 1 km map grid, the way an analyst's sheet looks, not a glow. */
+  body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 96px 96px; mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 70%); opacity: .55; }
   a { color: var(--accent); }
-  @media (prefers-reduced-motion: reduce) { video { display: none; } .poster { display: block !important; } }
-  .poster { display: none; }
+  a:focus-visible, button:focus-visible { outline: 2px solid #8cc2ff; outline-offset: 3px; border-radius: 8px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  .mono { font-family: var(--mono); }
+
+  /* top bar */
+  header.top { position: sticky; top: 0; z-index: 10; background: rgba(7,11,18,.82); border-bottom: 1px solid var(--line);
+    -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%); }
+  @media (prefers-reduced-transparency: reduce) { header.top { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+  .top .wrap { display: flex; align-items: center; gap: 22px; min-height: 60px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; color: var(--ink); text-decoration: none; font-size: 18px; }
+  .top nav { display: flex; gap: 20px; margin-left: auto; }
+  .top nav a { color: var(--ink-2); text-decoration: none; font-size: 15px; padding: 10px 0; }
+  .top nav a:hover { color: var(--ink); }
+  @media (max-width: 760px) { .top nav { display: none; } }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px;
+    border-radius: 999px; font-weight: 600; font-size: 16px; text-decoration: none; border: 1px solid transparent; cursor: pointer; }
+  .btn.primary { background: var(--btn); color: #fff; }
+  .btn.primary:hover { background: #2b7bf0; }
+  .btn.ghost { border-color: var(--line-2); color: var(--ink); background: transparent; }
+  .btn.ghost:hover { border-color: var(--accent); }
+  .top .btn { min-height: 40px; padding: 0 16px; font-size: 15px; }
+
+  /* hero: the geolocation agent */
+  .hero { padding-top: 64px; padding-bottom: 40px; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 48px; align-items: center; }
+  @media (max-width: 900px) { .hero { grid-template-columns: 1fr; padding-top: 40px; gap: 28px; } }
+  .kicker { font: 600 13px var(--mono); letter-spacing: .06em; color: var(--accent); text-transform: uppercase; margin: 0 0 14px; }
+  h1 { font-size: clamp(2.4rem, 5.4vw, 3.9rem); line-height: 1.04; letter-spacing: -0.025em; margin: 0 0 18px; }
+  .lede { font-size: 1.2rem; color: var(--ink-2); margin: 0 0 26px; max-width: 34em; }
+  .ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+  .proof { display: flex; gap: 22px; flex-wrap: wrap; margin: 30px 0 0; padding: 0; list-style: none; }
+  .proof li { font-size: 14px; color: var(--ink-3); }
+  .proof b { display: block; font-size: 22px; color: var(--ink); font-weight: 650; font-variant-numeric: tabular-nums; }
+  .proof .note { flex-basis: 100%; font-size: 13px; margin-top: -10px; }
+
+  /* media frames with a pause control (WCAG 2.2.2) */
+  .frame { position: relative; border-radius: var(--r); overflow: hidden; border: 1px solid var(--line-2); background: #000;
+    box-shadow: 0 30px 70px rgba(0,0,0,.45); }
+  .frame video, .frame img { display: block; width: 100%; height: auto; }
+  .frame figcaption { position: absolute; left: 12px; bottom: 12px; font: 12px var(--mono); color: var(--ink-2);
+    background: rgba(7,11,18,.78); padding: 4px 9px; border-radius: 999px; }
+  .pause { position: absolute; right: 10px; bottom: 10px; width: 44px; height: 44px; border-radius: 999px; border: 0;
+    background: rgba(7,11,18,.78); color: var(--ink); display: grid; place-items: center; cursor: pointer; }
+  .pause svg { width: 18px; height: 18px; }
+
+  section { padding: 64px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(1.7rem, 3.2vw, 2.4rem); letter-spacing: -0.02em; margin: 0 0 12px; line-height: 1.15; }
+  .sub { color: var(--ink-2); max-width: 40em; margin: 0 0 32px; font-size: 1.08rem; }
+
+  /* how locate works */
+  .steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; counter-reset: s; }
+  @media (max-width: 900px) { .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .steps { grid-template-columns: 1fr; } }
+  .step { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 20px; }
+  .step::before { counter-increment: s; content: "0" counter(s); font: 600 13px var(--mono); color: var(--accent); }
+  .step h3 { margin: 8px 0 6px; font-size: 1.08rem; }
+  .step p { margin: 0; color: var(--ink-2); font-size: .97rem; }
+  .trust { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+  @media (max-width: 900px) { .trust { grid-template-columns: 1fr; } }
+  .trust div { border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; background: rgba(15,23,36,.6); }
+  .trust b { display: block; margin-bottom: 4px; }
+  .trust span { color: var(--ink-2); font-size: .95rem; }
+
+  /* everything else the map answers */
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+  .feat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; display: flex; flex-direction: column; }
+  .feat .media { aspect-ratio: 16 / 10; background: #000; overflow: hidden; }
+  .feat .media img, .feat .media video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .feat .body { padding: 16px 18px 18px; }
+  .feat .q { font: 13px var(--mono); color: var(--accent); margin: 0 0 6px; }
+  .feat h3 { margin: 0 0 6px; font-size: 1.08rem; }
+  .feat p { margin: 0; color: var(--ink-2); font-size: .95rem; }
+  .feat .icon-media { display: grid; place-items: center; color: var(--accent); background: linear-gradient(180deg, var(--surface-2), var(--surface)); }
+  .feat .icon-media svg { width: 64px; height: 64px; opacity: .9; }
+
+  /* models */
+  .models { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 900px) { .models { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .model { border: 1px solid var(--line); border-radius: var(--r); padding: 18px; background: var(--surface); }
+  .model b { display: block; font-size: 1.05rem; margin-bottom: 4px; }
+  .model span { color: var(--ink-2); font-size: .93rem; }
+  .model span { display: block; }
+  .model .tag { display: block; margin-top: 10px; font: 12px var(--mono); color: var(--gain); }
+
+  pre { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; overflow-x: auto;
+    font: 14px/1.7 var(--mono); color: var(--ink); margin: 0; }
+  .run { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+  @media (max-width: 900px) { .run { grid-template-columns: 1fr; } }
+  .run ol { margin: 0; padding-left: 1.2em; color: var(--ink-2); }
+  .run li { margin: 0 0 10px; }
+  .run li b { color: var(--ink); }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 0 48px; color: var(--ink-3); font-size: 13px; }
+  footer p { margin: 0 0 8px; max-width: 70em; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <h1>GeoAsk</h1>
-    <p class="lede">Ask a map questions in plain language. Get answers measured from satellite imagery, anywhere on Earth, with any sensor and any geospatial foundation model.</p>
-    <div class="ctas"><a class="cta" href="app/">Open the Live Demo</a><a class="cta ghost" href="https://github.com/cweekiat/geoask">View on GitHub</a></div>
-  </header>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#" aria-label="GeoAsk home">
+      <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="#5aa9ff" stroke-width="1.8"/><ellipse cx="12" cy="12" rx="4" ry="9" fill="none" stroke="#5aa9ff" stroke-width="1.4"/><path d="M3.5 9h17M3.5 15h17" stroke="#5aa9ff" stroke-width="1.4"/><circle cx="17.5" cy="6.5" r="2.2" fill="#e8eef6"/></svg>GeoAsk</a>
+    <nav aria-label="Page sections"><a href="#how">How it locates</a><a href="#more">Ask the map</a><a href="#models">Models</a><a href="#run">Run it</a></nav>
+    <a class="btn primary" href="app/">Open Live Demo</a>
+  </div>
+</header>
 
-  <section class="hero" aria-label="Demo">
-    <video src="media/hero.mp4" autoplay muted loop playsinline poster="media/change.jpg" aria-label="Asking what changed at the Tesla Gigafactory Berlin; the changed patches appear, then a before and after slider"></video>
-    <img class="shot poster" src="media/change.jpg" alt="Before and after imagery at the Tesla Gigafactory Berlin">
-    <p class="caption">“What changed at the Tesla Gigafactory Berlin since 2019?” Clay compares every 80 m patch: 117 ha changed.</p>
+<main>
+  <div class="wrap hero">
+    <div>
+      <p class="kicker">Photo geolocation agent</p>
+      <h1>Where was this photo taken?</h1>
+      <p class="lede">GeoAsk reads the clues in a photo, checks them against open maps, satellite imagery and terrain, and answers with likely areas and a confidence. Add a clue and it narrows down. Then ask the map anything else.</p>
+      <div class="ctas">
+        <a class="btn primary" href="app/">Open Live Demo</a>
+        <a class="btn ghost" href="https://github.com/cweekiat/geoask">View on GitHub</a>
+      </div>
+      <ul class="proof" aria-label="One recorded run">
+        <li><b>Right area</b>Valparaíso, Chile</li>
+        <li><b>85% → 90%</b>after one extra clue</li>
+        <li><b>≈ $0.02</b>per photo on Claude</li>
+        <li class="note">Live tests on one street photo with its metadata removed (the replay is a separate run). Results vary.</li>
+      </ul>
+    </div>
+    <figure class="frame" style="margin:0">
+      <video src="media/locate.mp4" poster="media/locate.jpg" muted loop playsinline preload="metadata" data-auto
+        aria-label="GeoAsk locates a street photo: it reads the clues, then shows the most likely area over Valparaíso with 75 percent confidence"></video>
+      <figcaption>33.0407° S 71.6275° W · Likely 75%</figcaption>
+      <button class="pause" type="button" aria-label="Pause video"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
+    </figure>
+  </div>
+
+  <section id="how">
+    <div class="wrap">
+      <h2>How it narrows a photo down</h2>
+      <p class="sub">The model reasons like an expert player, then checks what it thinks against real, open data instead of trusting its memory.</p>
+      <div class="steps">
+        <div class="step"><h3>Read the clues</h3><p>Scripts on signs, driving side, road markings, poles, plants, roofs, terrain, the sun and shadows.</p></div>
+        <div class="step"><h3>Check them</h3><p>OpenStreetMap for street and shop names, open reference photos, satellite views, elevation, sun position.</p></div>
+        <div class="step"><h3>Answer with areas</h3><p>Up to three areas, each with a likelihood and a one-line reason. Never a single pin.</p></div>
+        <div class="step"><h3>Add a clue</h3><p>“There was a funicular nearby.” Another photo, a hint, a “not here”: the estimate tightens.</p></div>
+      </div>
+      <div class="trust">
+        <div><b>Metadata stays with you</b><span>Camera GPS and time are read on your computer. Photos are sent without them unless you choose to share.</span></div>
+        <div><b>Areas, never people</b><span>The agent ignores faces and won’t help find where a person lives or is. Answers are areas, not addresses.</span></div>
+        <div><b>Honest confidence</b><span>Every area shows how sure the model is, and every number it writes is checked against the measurements.</span></div>
+      </div>
+    </div>
   </section>
 
-  <h2>What you can ask</h2>
-  <div class="grid">
-    <div class="feat">
-      <video src="media/locate.mp4" autoplay muted loop playsinline poster="media/locate.jpg" aria-label="Locate: Claude estimates where a street photo was taken"></video>
-      <img class="shot poster" src="media/locate.jpg" alt="Locate result for a street photo in Valparaíso">
-      <h3>Where was this photo taken?</h3>
-      <p>A Claude agent reads the clues and checks them against open map data, reference photos, satellite views and terrain. <b>Likely areas with confidence, never a pin, never people.</b></p>
+  <section id="more">
+    <div class="wrap">
+      <h2>Then ask the map anything</h2>
+      <p class="sub">One chat, one model, every tool. Ask in your own words, draw a box, type coordinates, or run a tool straight from the map toolbar.</p>
+      <div class="grid">
+        <article class="feat"><div class="media"><video src="media/hero.mp4" poster="media/change.jpg" muted loop playsinline preload="none" data-auto aria-label="Changed patches appear over the Tesla Gigafactory Berlin, then a before and after slider"></video></div>
+          <div class="body"><p class="q">“What changed here since 2019?”</p><h3>Change over time</h3><p>Foundation-model embeddings (Clay) find change of any kind; spectral indices measure vegetation, water and built-up land.</p></div></article>
+        <article class="feat"><div class="media"><img src="media/activity.jpg" loading="lazy" alt="Vessel detections over the Bay of Gibraltar with a bar chart of vessels per radar pass"></div>
+          <div class="body"><p class="q">“How busy is this port?”</p><h3>Pattern of life at sea</h3><p>Vessels on every radar pass, day or night, through cloud, with unusual days flagged.</p></div></article>
+        <article class="feat"><div class="media"><img src="media/viewshed.jpg" loading="lazy" alt="Visible ground shaded teal around an observer on Gornergrat above Zermatt"></div>
+          <div class="body"><p class="q">“What can be seen from here?”</p><h3>Viewshed and line of sight</h3><p>From the Copernicus 30 m elevation model, allowing for Earth’s curvature.</p></div></article>
+        <article class="feat"><div class="media"><img src="media/terrain.jpg" loading="lazy" alt="Colour relief of the terrain around Zermatt"></div>
+          <div class="body"><p class="q">“How steep is it?”</p><h3>Terrain</h3><p>Elevation, slope and relief for any area.</p></div></article>
+        <article class="feat"><div class="media"><video src="media/sharpen.mp4" poster="media/sharpen.jpg" muted loop playsinline preload="none" data-auto aria-label="A 10 metre satellite view of Sydney blending into a sharper 2.5 metre view"></video></div>
+          <div class="body"><p class="q">“Show me it sharper”</p><h3>Super-resolution and enhancement</h3><p>Satellite views sharpened to 2.5 m, and generative enhancement of blurry photos, always labelled as viewing aids.</p></div></article>
+        <article class="feat"><div class="media"><img src="media/mapping.jpg" loading="lazy" alt="MGRS grid, a measured line with bearing in mils and a coordinate card over the Alps"></div>
+          <div class="body"><p class="q">48N UG 6387 4975</p><h3>Field mapping</h3><p>MGRS grid, decimal, DMS and UTM coordinates, distance and bearing in mils, hillshade and 3D.</p></div></article>
+      </div>
     </div>
-    <div class="feat">
-      <img class="shot" src="media/activity.jpg" alt="Vessels per radar pass over the Bay of Gibraltar">
-      <h3>How busy is this port?</h3>
-      <p>Vessels on every Sentinel-1 radar pass, day or night, through cloud. <b>Bay of Gibraltar: about 50 per pass</b>, unusual days flagged.</p>
-    </div>
-    <div class="feat">
-      <img class="shot" src="media/viewshed.jpg" alt="Viewshed from Gornergrat above Zermatt">
-      <h3>What can be seen from here?</h3>
-      <p>Viewshed and line of sight from the Copernicus 30 m elevation model. <b>From Gornergrat: 25% of the ground within 10 km.</b></p>
-    </div>
-    <div class="feat">
-      <img class="shot" src="media/terrain.jpg" alt="Terrain relief around Zermatt">
-      <h3>How steep is it?</h3>
-      <p>Elevation, slope and relief. <b>Zermatt: 1,437 to 4,540 m, mean slope 26°.</b></p>
-    </div>
-    <div class="feat">
-      <video src="media/sharpen.mp4" autoplay muted loop playsinline aria-label="A 10 m Sentinel-2 view of Sydney blended into a 2.5 m super-resolved view"></video>
-      <h3>A sharper look</h3>
-      <p>Sentinel-2 sharpened from 10 m to 2.5 m, constrained to agree with the real pixels. <b>For viewing only.</b></p>
-    </div>
-    <div class="feat">
-      <img class="shot" src="media/mapping.jpg" alt="MGRS grid, measure tool and point card above Zermatt">
-      <h3>Field mapping</h3>
-      <p>MGRS grid, coordinates in decimal, DMS, MGRS and UTM, distance and bearing in mils, point cards, hillshade and 3D.</p>
-    </div>
-  </div>
+  </section>
 
-  <h2>Why it’s different</h2>
-  <div class="how">
-    <div><h3>Measured, not generated</h3><p>Language models only choose the tool and write the answer. Every number comes from pixels, and each number in the answer is checked.</p></div>
-    <div><h3>Any sensor, any model</h3><p>Bands are found by wavelength, so a new satellite is a YAML file. Foundation models, detectors and super-resolution plug in through small interfaces.</p></div>
-    <div><h3>Free and local</h3><p>Open data streamed straight from public buckets, no API keys for the map tools, runs on a laptop. Only your area’s pixels are read.</p></div>
-  </div>
+  <section id="models">
+    <div class="wrap">
+      <h2>Bring your own model</h2>
+      <p class="sub">GeoAsk is model-agnostic. Choose in Settings, swap any time. The tools, data and checks stay the same.</p>
+      <div class="models">
+        <div class="model"><b>Claude API</b><span>Best results. Paste a key in Settings; it stays on your computer.</span><span class="tag">Sonnet · Opus · Haiku</span></div>
+        <div class="model"><b>Ollama</b><span>Free and offline after download. Pick or download a model in Settings.</span><span class="tag">qwen2.5vl · gemma3 · …</span></div>
+        <div class="model"><b>OpenAI-compatible</b><span>LM Studio, llama.cpp, vLLM or any server with that API.</span><span class="tag">your endpoint</span></div>
+        <div class="model"><b>No model</b><span>Simple questions still work with fixed rules, fully offline.</span><span class="tag">rule-based</span></div>
+      </div>
+    </div>
+  </section>
 
-  <h2>Run it yourself</h2>
-<pre>git clone https://github.com/cweekiat/geoask && cd geoask
+  <section id="run">
+    <div class="wrap run">
+      <div>
+        <h2>Run it on your computer</h2>
+        <ol>
+          <li><b>Install</b> on macOS or Linux (Python 3.12, <a href="https://docs.astral.sh/uv/">uv</a>).</li>
+          <li><b>Start</b> <span class="mono">geoask serve</span> and open the app.</li>
+          <li><b>Choose a model</b> in Settings: paste a Claude key, or pick an Ollama model.</li>
+          <li><b>Drop a photo</b> into the chat, or ask about any place.</li>
+        </ol>
+      </div>
+<pre><code>git clone https://github.com/cweekiat/geoask
+cd geoask
 uv venv && uv pip install -e ".[serve,locate]"
-geoask serve    # http://127.0.0.1:8787/app/</pre>
-  <p class="caption">macOS or Linux. Optional: Ollama with Qwen 2.5 7B for free-form questions, an Anthropic API key (pasted in the app) for Locate.</p>
-
-  <footer>Contains modified Copernicus Sentinel data, processed by GeoAsk. Copernicus GLO-30 DEM © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA. Map data © OpenStreetMap contributors. Sentinel-2 cloudless by EOX. Demo photo: Barcex, CC BY-SA 3.0, Wikimedia Commons.</footer>
+geoask serve   # http://127.0.0.1:8787/app/</code></pre>
+    </div>
+  </section>
 </main>
+
+<footer>
+  <div class="wrap">
+    <p>Open data: Copernicus Sentinel-1 and Sentinel-2 (ESA); Copernicus GLO-30 DEM © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA; © OpenStreetMap contributors; Sentinel-2 cloudless by EOX; reference photos from Wikimedia Commons and Panoramax contributors. Demo photo: Barcex, CC BY-SA 3.0.</p>
+    <p>GeoAsk is open source (MIT). Answers are estimates; check anything that matters.</p>
+  </div>
+</footer>
+
+<script>
+  // Autoplay only when motion is welcome; every video can be paused (WCAG 2.2.2, HIG › Accessibility › Motion).
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const vids = document.querySelectorAll('video[data-auto]');
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => {
+    const v = e.target;
+    if (still || v.dataset.paused === '1') return;
+    if (e.isIntersecting) v.play().catch(() => {}); else v.pause();
+  }), { threshold: .35 }) : null;
+  vids.forEach(v => io ? io.observe(v) : (!still && v.play().catch(() => {})));
+  document.querySelectorAll('.pause').forEach(b => {
+    const v = b.parentElement.querySelector('video');
+    const sync = () => { const on = !v.paused; b.setAttribute('aria-label', on ? 'Pause video' : 'Play video');
+      b.innerHTML = on ? '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>'; };
+    b.onclick = () => { if (v.paused) { v.dataset.paused = ''; v.play(); } else { v.dataset.paused = '1'; v.pause(); } sync(); };
+    v.addEventListener('play', sync); v.addEventListener('pause', sync); sync();
+  });
+</script>
 </body>
 </html>

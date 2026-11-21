@@ -1,12 +1,13 @@
-"""Local API + static app server.  Run with ``geoask serve``.
+"""Local API + app server.  Run with ``geoask serve``.
 
-``/api/ask`` takes a free-form question (and optionally a box drawn on the map) and streams
-newline-delimited JSON events:
+    POST /api/chat       one chat with the chosen model (any provider) and every tool; photos and
+                         a drawn box are optional; streams newline-delimited JSON events
+    POST /api/run        run one tool directly (the map toolbar), no model involved
+    GET/POST /api/settings, POST/DELETE /api/settings/key, POST /api/ollama/pull,
+    POST /api/models/fetch    model choice, keys and offline model downloads
 
-    plan → step… → result → answer      (an analysis)
-    clarify | reply | error              (no analysis)
-
-The planner is Qwen 2.5 7B via Ollama when it's running, otherwise the rule-based planner.
+Chat events: session · photos · recorded · step · thinking · note · result · evidence ·
+estimate · usage · answer · fly · error.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import json
 import os
 import queue
 import threading
-import time
+import urllib.request
 from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
@@ -26,10 +27,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import __version__, aoi, mgrs
-from .agent import answer, llm
+from . import settings as cfg
 from .agent.catalog import catalog
-from .agent.planner import EXAMPLES, Clarify, Plan, Reply, default_planner
-from .models import ModelNotInstalled, list_models
+from .agent.planner import EXAMPLES
+from .models import list_models
 from .tools import activity, investigate, superres, terrain
 from .tools.embedding_change import embedding_change
 
@@ -38,35 +39,73 @@ OUT = Path(os.environ.get("GEOASK_OUT", Path.home() / ".cache" / "geoask" / "res
 
 
 class KeyIn(BaseModel):
-    key: str  # an Anthropic API key, pasted in the Locate tab
+    provider: str = "anthropic"
+    key: str
 
 
-class Ask(BaseModel):
-    question: str
-    bbox: list[float] | None = None  # [west, south, east, north] drawn on the map
+class RunIn(BaseModel):
+    tool: str
+    args: dict = {}
+    bbox: list[float] | None = None
 
 
-_planner_cache: tuple[float, object] = (0.0, None)
+class FetchIn(BaseModel):
+    id: str
 
 
-def planner():
-    """Re-check Ollama at most every 30 s, so starting it later just works."""
-    global _planner_cache
-    t, p = _planner_cache
-    if p is None or time.time() - t > 30:
-        _planner_cache = (time.time(), default_planner())
-    return _planner_cache[1]
+class PullIn(BaseModel):
+    model: str
+
+
+def _line(kind: str, **kw) -> str:
+    return json.dumps({"type": kind, **kw}, default=str) + "\n"
+
+
+def _stream(work) -> StreamingResponse:
+    """Run ``work(emit)`` on a thread and stream what it emits."""
+    q: queue.Queue = queue.Queue()
+
+    def target():
+        try:
+            work(q.put)
+        except Exception as e:  # noqa: BLE001 - every failure reaches the user
+            q.put({"type": "error", "message": str(e) or type(e).__name__,
+                   "hint": "Check the connection and the model in Settings, then try again."})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=target, daemon=True).start()
+
+    def gen():
+        while (ev := q.get()) is not None:
+            yield json.dumps(ev, default=str) + "\n"
+
+    return StreamingResponse(gen(), media_type="application/x-ndjson")
+
+
+def provider_info() -> dict:
+    p = cfg.resolve_provider()
+    if p is None:
+        return {"kind": "none", "label": "No model (rule-based)", "vision": False, "tools": False}
+    return {"kind": p.kind, "label": p.label, "model": p.model, "vision": p.vision, "tools": p.tools}
 
 
 def create_app() -> FastAPI:
     OUT.mkdir(parents=True, exist_ok=True)
     app = FastAPI(title="GeoAsk", version=__version__)
 
+    def same_origin(request: Request) -> None:
+        """Settings and keys change only from this app on this computer."""
+        origin = request.headers.get("origin")
+        if origin and origin.split("://", 1)[-1] != request.headers.get("host", ""):
+            raise HTTPException(403, "Requests from other sites can't change settings.")
+        client = request.client.host if request.client else ""
+        if client not in ("127.0.0.1", "::1", "localhost", "testclient"):
+            raise HTTPException(403, "Settings can only be changed from this computer.")
+
     @app.get("/api/health")
     def health():
-        p = planner()
-        return {"ok": True, "version": __version__, "planner": p.name, "live": True,
-                "llm": llm.MODEL if p.name.startswith("ollama") else None}
+        return {"ok": True, "version": __version__, "live": True, "model": provider_info()}
 
     @app.get("/api/places")
     def places():
@@ -74,7 +113,6 @@ def create_app() -> FastAPI:
 
     @app.get("/api/search")
     def search(q: str = "", online: bool = False):
-        """Bundled names as you type; ``online=true`` (on Enter) adds the worldwide geocoder."""
         return [{"name": p.name, "bbox": p.bbox, "source": p.source,
                  "km2": round(p.area_km2, 1)} for p in aoi.search(q, online=online)]
 
@@ -99,154 +137,172 @@ def create_app() -> FastAPI:
     def examples():
         return EXAMPLES
 
-    @app.post("/api/ask")
-    def ask(body: Ask):
-        def emit(kind: str, **kw) -> str:
-            return json.dumps({"type": kind, **kw}, default=str) + "\n"
+    # ---- settings -------------------------------------------------------------------------
+    @app.get("/api/settings")
+    def get_settings():
+        from .models import enhance
+        from .models.superres import FILES, MODELS_DIR
 
-        def events():
-            p = planner()
-            yield emit("step", text=f"Reading the question ({p.name})")
-            out = p.plan(body.question, selection=tuple(body.bbox) if body.bbox else None)
-            if isinstance(out, Clarify):
-                yield emit("clarify", message=out.message, suggestions=out.suggestions,
-                           bbox=out.bbox)
-                return
-            if isinstance(out, Reply):
-                yield emit("reply", message=out.message, planner=out.planner,
-                           suggestions=EXAMPLES)
-                return
-            assert isinstance(out, Plan)
-            yield emit("plan", tool=out.tool, args=out.args, explanation=out.explanation,
-                       planner=out.planner)
-            try:
-                result = None
-                for kind, payload in _run(out.tool, out.args):
-                    if kind == "step":
-                        yield emit("step", text=payload)
-                    else:
-                        result = payload
-                        result["base"] = f"/outputs/{result['id']}/"
-                        yield emit("result", result=result)
-                if result is not None:
-                    if out.planner.startswith("ollama"):
-                        yield emit("step", text="Writing the answer from the measurements")
-                        text, source = answer.write(body.question, result)
-                    else:
-                        text, source = answer.template_answer(result), "template"
-                    yield emit("answer", text=text, source=source)
-            except investigate.NoClearDate as e:
-                yield emit("error", message=str(e),
-                           hint="Try a wider time range or a different year.")
-            except ModelNotInstalled as e:
-                yield emit("error", message=str(e),
-                           hint="Ask about vegetation, water or built-up land to use the "
-                                "spectral tools, which need no model.")
-            except Exception as e:  # noqa: BLE001 - surface every failure to the user
-                yield emit("error", message=f"{type(e).__name__}: {e}",
-                           hint="Check your internet connection, then try again.")
+        s = cfg.load()
+        return {"settings": s, "active": provider_info(),
+                "keys": {k: cfg.masked(k) for k in cfg.SECRET_VARS},
+                "ollama": cfg.ollama_status(s["ollama"]["host"]),
+                "recommended": cfg.RECOMMENDED_OLLAMA,
+                "offline": [
+                    {"id": "sen2sr", "title": "SEN2SR-Lite (satellite super-resolution)", "size_mb": 3.4,
+                     "licence": "CC0-1.0", "installed": all((MODELS_DIR / "sen2sr-lite" / f).exists() for f in FILES)},
+                    {"id": "clay", "title": "Clay v1.5 encoder (any-change tool)", "size_mb": 5200,
+                     "licence": "Apache-2.0", "installed": (MODELS_DIR / "clay-v1.5-encoder.pt").exists(),
+                     "manual": "python scripts/fetch_clay.py"},
+                    *[dict(e, title=e["title"] + " (photo enhancement)") for e in enhance.status()]]}
 
-        return StreamingResponse(events(), media_type="application/x-ndjson")
+    @app.post("/api/settings")
+    def post_settings(body: dict, request: Request):
+        same_origin(request)
+        cfg.save(body)
+        return {"ok": True, "active": provider_info()}
 
-    # ---- Locate: where was this photo taken? (Claude agent + open-data tools) ----
-    @app.get("/api/locate/status")
-    def locate_status():
-        from .geolocate import agent as la
-        from .geolocate import keys
-
-        return {"available": la.available(), "key": keys.masked(), "models": la.MODELS,
-                "default": os.environ.get("GEOASK_LOCATE_MODEL", "sonnet"),
-                "mapillary": bool(os.environ.get("MAPILLARY_TOKEN")),
-                "max_photos": 5}
-
-    def same_origin(request: Request) -> None:
-        """Only this app may change the key: other sites' pages can't POST here from a browser
-        (their Origin differs), and only connections from this computer are accepted."""
-        origin = request.headers.get("origin")
-        host = request.headers.get("host", "")
-        if origin and origin.split("://", 1)[-1] != host:
-            raise HTTPException(403, "Requests from other sites can't change the key.")
-        client = request.client.host if request.client else ""
-        if client not in ("127.0.0.1", "::1", "localhost", "testclient"):
-            raise HTTPException(403, "The key can only be changed from this computer.")
-
-    @app.post("/api/locate/key")
+    @app.post("/api/settings/key")
     def set_key(body: KeyIn, request: Request):
         from .geolocate import keys
 
         same_origin(request)
-        key = keys.clean(body.key)
-        if not keys.looks_valid(key):
-            raise HTTPException(400, "That doesn't look like an Anthropic API key. It starts with sk-ant-.")
-        try:
-            keys.verify(key)
-        except ValueError as e:
-            raise HTTPException(400, str(e)) from e
-        keys.save(key)
-        return {"ok": True, "key": keys.masked(key), "stored_in": str(keys.env_file())}
+        if body.provider == "anthropic":
+            key = keys.clean(body.key)
+            if not keys.looks_valid(key):
+                raise HTTPException(400, "That doesn't look like an Anthropic API key. It starts with sk-ant-.")
+            try:
+                keys.verify(key)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+        elif body.provider == "openai":
+            key = body.key.strip()
+        else:
+            raise HTTPException(400, "Unknown provider.")
+        cfg.save_secret(body.provider, key)
+        return {"ok": True, "key": cfg.masked(body.provider), "active": provider_info()}
 
-    @app.delete("/api/locate/key")
-    def delete_key(request: Request):
-        from .geolocate import keys
-
+    @app.delete("/api/settings/key")
+    def delete_key(request: Request, provider: str = "anthropic"):
         same_origin(request)
-        keys.remove()
-        return {"ok": True}
+        if provider not in cfg.SECRET_VARS:
+            raise HTTPException(400, "Unknown provider.")
+        cfg.remove_secret(provider)
+        return {"ok": True, "active": provider_info()}
 
-    @app.post("/api/locate")
-    async def locate(files: Annotated[list[UploadFile], File()],
-                     note: Annotated[str, Form()] = "", model: Annotated[str, Form()] = "sonnet",
-                     share_meta: Annotated[bool, Form()] = True):
-        from .geolocate import agent as la
+    @app.post("/api/ollama/pull")
+    def ollama_pull(body: PullIn, request: Request):
+        same_origin(request)
+        host = cfg.load()["ollama"]["host"].rstrip("/")
+
+        def work(emit):
+            req = urllib.request.Request(f"{host}/api/pull", data=json.dumps({"model": body.model}).encode(),
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=3600) as r:
+                for line in r:
+                    ev = json.loads(line)
+                    done, total = ev.get("completed"), ev.get("total")
+                    pct = f" {100 * done / total:.0f}%" if done and total else ""
+                    emit({"type": "step", "text": f"{ev.get('status', '')}{pct}"})
+            emit({"type": "done", "model": body.model})
+
+        return _stream(work)
+
+    @app.post("/api/models/fetch")
+    def fetch_model(body: FetchIn, request: Request):
+        same_origin(request)
+
+        def work(emit):
+            step = lambda m: emit({"type": "step", "text": m})
+            if body.id == "sen2sr":
+                from .models.superres import fetch_sen2sr
+
+                step("Downloading SEN2SR-Lite (3.4 MB)")
+                fetch_sen2sr()
+            elif body.id in ("realesrgan-x4", "sd-x4-upscaler"):
+                from .models import enhance
+
+                enhance.fetch(body.id, step)
+            else:
+                raise ValueError("This model is installed from the command line (see Settings).")
+            emit({"type": "done", "id": body.id})
+
+        return _stream(work)
+
+    @app.get("/api/models/size")
+    def model_size(id: str):
+        from .models import enhance
+
+        if id == "sd-x4-upscaler":
+            return {"size_mb": enhance.sd_size_mb()}
+        raise HTTPException(404)
+
+    # ---- the chat ---------------------------------------------------------------------------
+    @app.post("/api/chat")
+    async def chat_endpoint(message: Annotated[str, Form()] = "", session: Annotated[str, Form()] = "",
+                            bbox: Annotated[str, Form()] = "",
+                            files: Annotated[list[UploadFile] | None, File()] = None):
+        from .agent import chat
         from .geolocate import images as li
 
-        def emit(kind: str, **kw) -> str:
-            return json.dumps({"type": kind, **kw}, default=str) + "\n"
+        raw = [(f.filename or "", await f.read()) for f in (files or [])[: li.MAX_PHOTOS]]
+        sel = json.loads(bbox) if bbox else None
+        s = cfg.load()
 
-        raw = [(f.filename or "", await f.read()) for f in files[: li.MAX_PHOTOS]]
-
-        def events():
-            photos = []
-            for i, (name, data) in enumerate(raw, 1):
-                try:
-                    photos.append(li.load(data, i, name))
-                except ValueError as e:
-                    yield emit("error", message=str(e), hint="Use JPEG, PNG, HEIC-converted or WebP photos under 20 MB.")
+        def work(emit):
+            sid, _ = chat.session(session or None)
+            emit({"type": "session", "id": sid})
+            photos = [li.load(data, i, name) for i, (name, data) in enumerate(raw, 1)]
+            if photos:
+                emit({"type": "photos", "photos": [{"name": p.name, "thumb": p.thumb_b64, "meta": p.meta}
+                                                   for p in photos]})
+                gps = [p for p in photos if p.meta.get("gps")]
+                if gps:  # non-AI answer first: the camera recorded where it was
+                    emit({"type": "recorded", "points": [dict(p.meta["gps"]) for p in gps]})
+            provider = cfg.resolve_provider(s)
+            if provider is None:
+                if photos:
+                    emit({"type": "answer", "source": "rule-based (no model)", "unverified": [],
+                          "text": "Photo geolocation needs a model. Open Settings to connect Claude, "
+                                  "Ollama or another model."})
                     return
-            yield emit("photos", photos=[{"index": p.index, "name": p.name, "thumb": p.thumb_b64,
-                                          "width": p.width, "height": p.height, "meta": p.meta}
-                                         for p in photos])
-            gps = [p for p in photos if p.meta.get("gps")]
-            if gps:  # non-AI answer first: the camera recorded where it was
-                yield emit("recorded", points=[{"index": p.index, **p.meta["gps"]} for p in gps])
-            if not la.available():
-                yield emit("error", message="Locate needs an Anthropic API key.",
-                           hint="Paste your key in the Locate tab to connect Claude.")
+                chat.run_without_model(sid, message, sel, OUT, emit)
                 return
-            q: queue.Queue = queue.Queue()
-            box: dict = {}
+            emit({"type": "model", "label": provider.label, "vision": provider.vision})
+            chat.run_turn(provider, sid, message, photos, sel, OUT, emit,
+                          share_meta=bool(s.get("share_photo_details", True)))
 
-            def work():
-                try:
-                    box["result"] = la.locate(photos, q.put, note=note, model=model,
-                                              share_meta=share_meta)
-                except la.LocateError as e:
-                    box["error"] = str(e)
-                except Exception as e:  # noqa: BLE001 - surface every failure to the user
-                    box["error"] = f"{type(e).__name__}: {e}"
-                finally:
-                    q.put(None)
+        return _stream(work)
 
-            threading.Thread(target=work, daemon=True).start()
-            yield emit("step", text=f"Sending {len(photos)} photo(s) to {la.MODELS.get(model, model)} "
-                       "(metadata removed)")
-            while (ev := q.get()) is not None:
-                yield json.dumps(ev, default=str) + "\n"
-            if "error" in box:
-                yield emit("error", message=box["error"],
-                           hint="Try again, add another photo of the same place, or switch model.")
+    @app.post("/api/run")
+    def run_tool(body: RunIn):
+        """The map toolbar: run one tool on the drawn box or a point, without a model."""
+        from .agent import chat
 
-        return StreamingResponse(events(), media_type="application/x-ndjson")
+        def work(emit):
+            r = chat.run_analysis(body.tool, body.args, body.bbox, OUT, emit)
+            if r.get("id"):
+                r["base"] = f"/outputs/{r['id']}/"
+            emit({"type": "result", "result": r})
+            emit({"type": "done"})
+
+        return _stream(work)
+
+    @app.post("/api/enhance")
+    async def enhance_endpoint(file: Annotated[UploadFile, File()], guidance: Annotated[str, Form()] = ""):
+        """The toolbar's generative enhancement: one photo, optional text guidance, no model."""
+        from .geolocate import images as li
+        from .models import enhance
+
+        data = await file.read()
+
+        def work(emit):
+            photo = li.load(data, 1, file.filename or "")
+            r = enhance.enhance_photo(photo, guidance, OUT, progress=lambda m: emit({"type": "step", "text": m}))
+            r["base"] = f"/outputs/{r['id']}/"
+            emit({"type": "result", "result": r})
+
+        return _stream(work)
 
     app.mount("/outputs", StaticFiles(directory=OUT), name="outputs")
     app.mount("/", StaticFiles(directory=WEB, html=True), name="web")
@@ -254,7 +310,8 @@ def create_app() -> FastAPI:
 
 
 def _run(tool: str, args: dict):
-    """Run the tool on a worker thread; yield ("step", msg)… then ("result", dict)."""
+    """Run a planned tool on a worker thread; yield ("step", msg)… then ("result", dict).
+    Used by the no-model chat path and by scripts/build_gallery.py."""
     q: queue.Queue = queue.Queue()
     box: dict = {}
     bbox = tuple(args["bbox"]) if args.get("bbox") else None
@@ -262,24 +319,21 @@ def _run(tool: str, args: dict):
     def work():
         try:
             if tool == "activity":
-                box["result"] = activity.activity(args["place"], args["window"], OUT,
-                                                  progress=q.put, bbox=bbox)
+                box["result"] = activity.activity(args["place"], args["window"], OUT, progress=q.put, bbox=bbox)
             elif tool == "super_resolve":
-                box["result"] = superres.super_resolve(args["place"], args["window"], OUT,
-                                                       args["model"], progress=q.put, bbox=bbox)
+                box["result"] = superres.super_resolve(args["place"], args["window"], OUT, args["model"],
+                                                       progress=q.put, bbox=bbox)
             elif tool == "terrain":
                 box["result"] = terrain.terrain(args["place"], OUT, progress=q.put, bbox=bbox)
             elif tool == "viewshed":
                 box["result"] = terrain.viewshed(args["lon"], args["lat"], OUT, args["radius_m"],
                                                  args["observer_h"], args["target_h"], progress=q.put)
             elif tool == "embedding_change":
-                box["result"] = embedding_change(
-                    args["place"], args["t0"], args["t1"], OUT, model=args["model"],
-                    progress=q.put, bbox=bbox)
+                box["result"] = embedding_change(args["place"], args["t0"], args["t1"], OUT,
+                                                 model=args["model"], progress=q.put, bbox=bbox)
             else:
-                box["result"] = investigate.index_change(
-                    args["place"], args["index"], args["t0"], args["t1"], OUT,
-                    progress=q.put, bbox=bbox)
+                box["result"] = investigate.index_change(args["place"], args["index"], args["t0"],
+                                                         args["t1"], OUT, progress=q.put, bbox=bbox)
         except Exception as e:  # noqa: BLE001
             box["error"] = e
         finally:

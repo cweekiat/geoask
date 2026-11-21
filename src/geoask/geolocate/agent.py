@@ -1,86 +1,27 @@
-"""The Locate agent: Claude reasons over the photos and checks its ideas with open-data tools,
-then submits up to three candidate areas with confidence.
+"""Geolocation tools for the chat agent: clue checks against open data, and the location estimate.
 
-A Messages API tool loop that runs on this computer (the tools read local data and run local
-compute). Sonnet 5.5 by default, Haiku 5.5 for cheaper runs. Adaptive thinking with summaries, so
-the app can show the reasoning as it happens; prompt caching across loop turns; for Sonnet, the
-server-side refusal fallback.
-
-    ANTHROPIC_API_KEY=...         in .env (repo root) or the environment
-    GEOASK_LOCATE_MODEL=sonnet    or haiku
+The chat agent (``geoask.agent.chat``) offers these to whichever model is chosen in Settings:
+find_place, search_map, nearby_photos, view_satellite, terrain_at, sun_check, and
+submit_location (validated here: up to three areas, radius floors per level, normalised
+confidence; never a pinpoint).
 """
 
 from __future__ import annotations
 
 import json
 import math
-import os
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from .. import geocode
 from . import sources
-from .images import Photo
 from .sun import solar_position
 
-MODELS = {"sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"}
-# $ per million tokens: input, output, cache read, cache write (5-minute). For the cost estimate
-# shown to the user; the Anthropic Console is the source of truth.
-PRICES = {"claude-sonnet-5-5": (2.00, 10.00, 0.10, 2.50), "claude-haiku-5-5": (0.10, 0.50, 0.01, 0.125)}
-MAX_ROUNDS = 12
 LEVEL_FLOOR_KM = {"exact-landmark": 0.125, "street": 0.25, "neighbourhood": 1, "city": 5,
                   "region": 25, "country": 150}
 
 Emit = Callable[[dict], None]
 
-
-class LocateError(RuntimeError):
-    pass
-
-
-def load_env() -> None:
-    from . import keys
-
-    keys.load_env()
-
-
-def available() -> bool:
-    load_env()
-    return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
-
-
-SYSTEM = """You are the Locate agent in GeoAsk, an open-source geospatial app. People give you one \
-or more images (street-level photos, aerial or satellite views, screenshots) and you estimate \
-where they were taken, the way an expert GeoGuessr player would, then check your ideas with tools.
-
-How to work:
-- Read every clue in the pixels first: scripts and languages on signs, phone numbers and domains, \
-which side of the road traffic uses, road markings, bollards, poles, kerbs, number-plate formats \
-(as a regional clue only), vehicles, architecture and roofs, vegetation, soil, terrain, coastline, \
-sun direction and shadows, and for aerial images the street pattern, field shapes and landmarks.
-- Narrow from continent to country to region to town. Keep competing hypotheses alive until the \
-evidence separates them.
-- Use the tools to verify specific claims rather than relying on memory: look names up with \
-find_place, check that a road, shop or feature exists near a candidate with search_map, compare \
-the scene with nearby_photos and view_satellite, check terrain_at for mountains or flat land, and \
-use sun_check when the capture time is known. If a tool fails, say so and continue.
-- Be calibrated. Confidence is your honest probability that the true location is inside that \
-area. Prefer a wider area you are confident in over a narrow guess. Up to three areas, ranked; \
-their confidences may sum to less than 1 (the rest means "somewhere else").
-- Keep everything the person reads short: before a tool call, one sentence of at most 12 words; \
-in submit_estimate, a summary under 12 words, each area's `why` one sentence under 20 words, each \
-clue under 8 words (e.g. "Left-hand traffic", "Te reo Māori on signs"), caveats one short sentence \
-or empty.
-- Finish by calling submit_estimate exactly once. Pick `level` to match your evidence; very small \
-areas need direct evidence such as a recognised landmark or a readable street name.
-
-Rules:
-- Never try to identify any person, and ignore faces. Don't help find where a private person lives \
-or is right now; if that seems to be the goal, give only the broad region (city level or wider) \
-and say why.
-- Areas only, no exact addresses.
-- Work in the open: before each tool call, say briefly what you are checking."""
 
 TOOLS = [
     {"name": "find_place", "description": "Look up a place name, street name or landmark in \
@@ -277,131 +218,3 @@ def validate_estimate(e: dict) -> dict:
                        "strength": c.get("strength") if c.get("strength") in ("strong", "medium", "weak") else "weak",
                        "photo": c.get("photo")} for c in (e.get("clues") or [])[:20]],
             "caveats": str(e.get("caveats", ""))[:500]}
-
-
-# ---- the loop -----------------------------------------------------------------------------------
-
-def first_message(photos: list[Photo], note: str, share_meta: bool) -> list[dict]:
-    content: list[dict] = []
-    for p in photos:
-        content.append({"type": "text", "text": f"Photo {p.index} of {len(photos)}"
-                        + (f" ({p.name})" if p.name else "") + f", {p.width}×{p.height} px:"})
-        content.append(p.block())
-    facts = []
-    for p in photos:
-        if p.meta and share_meta:
-            facts.append(f"Photo {p.index}: " + json.dumps(p.meta))
-    content.append({"type": "text", "text": (
-        "Metadata read on the user's computer:\n" + "\n".join(facts) if facts else
-        "No metadata is shared for these photos (it was absent or the user chose not to share it).")
-        + (f"\n\nNote from the user: {note[:1000]}" if note.strip() else "")
-        + "\n\nWhere were these taken? Work through the clues, check them with the tools, then "
-          "call submit_estimate."})
-    return [{"role": "user", "content": content}]
-
-
-def _usage_add(total: dict, u) -> None:
-    for k in ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"):
-        total[k] = total.get(k, 0) + (getattr(u, k, 0) or 0)
-
-
-def cost_usd(model: str, u: dict) -> float:
-    pi, po, pr, pw = PRICES.get(model, PRICES["claude-sonnet-5-5"])
-    return round((u.get("input_tokens", 0) * pi + u.get("output_tokens", 0) * po
-                  + u.get("cache_read_input_tokens", 0) * pr
-                  + u.get("cache_creation_input_tokens", 0) * pw) / 1e6, 4)
-
-
-def locate(photos: list[Photo], emit: Emit, note: str = "", model: str = "sonnet",
-           share_meta: bool = True, client=None, max_rounds: int = MAX_ROUNDS) -> dict:
-    """Run the agent. ``emit`` receives progress events; returns the validated estimate."""
-    import anthropic
-
-    load_env()
-    model_id = MODELS.get(model, model)
-    client = client or anthropic.Anthropic()
-    messages = first_message(photos, note, share_meta)
-    usage: dict = {}
-    extra = ({"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
-             if model_id == "claude-sonnet-5-5" else {})
-    nudged = False
-    pool = ThreadPoolExecutor(4)
-    try:
-        for rnd in range(1, max_rounds + 2):
-            try:
-                resp = client.beta.messages.create(
-                    model=model_id, max_tokens=16000, system=SYSTEM, tools=TOOLS,
-                    messages=messages, thinking={"type": "adaptive", "display": "summarized"},
-                    output_config={"effort": "medium"}, cache_control={"type": "ephemeral"},
-                    **extra)
-            except anthropic.AuthenticationError as e:
-                raise LocateError("The Anthropic API key was rejected. Check ANTHROPIC_API_KEY in .env.") from e
-            except anthropic.RateLimitError as e:
-                raise LocateError("The Anthropic API is rate-limiting this key. Wait a minute and try again.") from e
-            except anthropic.APIStatusError as e:
-                raise LocateError(f"The Claude API returned an error ({e.status_code}): {e.message}") from e
-            except anthropic.APIConnectionError as e:
-                raise LocateError("Couldn't reach the Claude API. Check the internet connection.") from e
-            _usage_add(usage, resp.usage)
-            emit({"type": "usage", "model": resp.model, "tokens": usage,
-                  "cost_usd": cost_usd(model_id, usage)})
-            for b in resp.content:
-                if b.type == "thinking" and getattr(b, "thinking", ""):
-                    emit({"type": "thinking", "text": b.thinking})
-                elif b.type == "text" and b.text.strip():
-                    emit({"type": "note", "text": b.text.strip()})
-            if resp.stop_reason == "refusal":
-                why = getattr(getattr(resp, "stop_details", None), "explanation", None)
-                raise LocateError("Claude declined to locate these images."
-                                  + (f" {why}" if why else ""))
-            if resp.stop_reason == "max_tokens":
-                raise LocateError("The answer ran too long. Try fewer photos.")
-            messages.append({"role": "assistant", "content": resp.content})
-            calls = [b for b in resp.content if b.type == "tool_use"]
-            if not calls:
-                if nudged:
-                    raise LocateError("Claude finished without submitting an estimate.")
-                nudged = True
-                messages.append({"role": "user", "content": "Please call submit_estimate now with "
-                                 "your best areas and honest confidences."})
-                continue
-            results, final = [], None
-            todo = []
-            for c in calls:
-                if c.name == "submit_estimate":
-                    try:
-                        final = validate_estimate(c.input)
-                        results.append({"type": "tool_result", "tool_use_id": c.id, "content": "Received."})
-                    except (ValueError, TypeError) as e:
-                        results.append({"type": "tool_result", "tool_use_id": c.id, "is_error": True,
-                                        "content": f"Invalid estimate: {e}. Fix it and submit again."})
-                else:
-                    emit({"type": "step", "tool": c.name, "text": describe(c.name, c.input)})
-                    todo.append(c)
-
-            def run(c):
-                try:
-                    return {"type": "tool_result", "tool_use_id": c.id,
-                            "content": run_tool(c.name, c.input, emit)}
-                except (sources.SourceError, geocode.GeocoderUnavailable) as e:
-                    return {"type": "tool_result", "tool_use_id": c.id, "is_error": True,
-                            "content": f"Source unavailable: {e}. Try another tool."}
-                except (ValueError, KeyError, TypeError) as e:
-                    return {"type": "tool_result", "tool_use_id": c.id, "is_error": True,
-                            "content": f"Invalid input: {e}"}
-
-            results += list(pool.map(run, todo))
-            if final is not None:
-                final["model"] = resp.model
-                final["usage"] = usage
-                final["cost_usd"] = cost_usd(model_id, usage)
-                final["rounds"] = rnd
-                emit({"type": "estimate", "estimate": final})
-                return final
-            if rnd >= max_rounds - 1:
-                results.append({"type": "text", "text": "Tool budget nearly used up: call "
-                                "submit_estimate in your next turn."})
-            messages.append({"role": "user", "content": results})
-        raise LocateError("The agent ran out of steps before submitting an estimate.")
-    finally:
-        pool.shutdown(wait=False)

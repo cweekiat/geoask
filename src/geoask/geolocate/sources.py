@@ -95,7 +95,7 @@ def search_map(lat: float, lon: float, radius_km: float, name: str | None = None
     body = urllib.parse.urlencode({"data": q}).encode()
     for i, url in enumerate(OVERPASS):
         try:
-            res = _get(url, data=body, timeout=15)
+            res = _get(url, data=body, timeout=8)
             break
         except SourceError:
             if i == len(OVERPASS) - 1:

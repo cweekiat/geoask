@@ -18,3 +18,4 @@ DerivedData/
 .env
 .env.*
 !.env.example
+.geoask.json

@@ -2,25 +2,21 @@
 
 Two planners share one output contract and the same validation:
 
-* ``LLMPlanner``: a local Ollama model (default Qwen 2.5 7B) reads any free-form question and picks
-  a tool with *simple* arguments: topic, place, years. Python turns those into exact date windows
-  and checks them; the model never sets dates, thresholds or numbers.
-* ``RuleBasedPlanner``: keyword rules. Needs no model; it's also the fallback whenever the LLM
-  is unavailable or returns something invalid.
+* ``RuleBasedPlanner``: keyword rules for the no-model mode (and the gallery builder). With a
+  model configured, the chat agent (``agent/chat.py``) calls the tools itself; the helpers here
+  (date windows, place and coordinate parsing, plan validation) are shared.
 
 A drawn box (``selection``) always wins over a place name.
 """
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Protocol
 
 from .. import aoi, mgrs
-from . import llm
 
 
 @dataclass
@@ -317,176 +313,6 @@ class RuleBasedPlanner:
 
 # ---- LLM (Ollama) --------------------------------------------------------------------------
 
-_TOOLS = [
-    {"type": "function", "function": {
-        "name": "measure_change",
-        "description": "Measure how an area changed between two years. Pick the topic from "
-                       "WHAT the user asks about, never from the kind of place: "
-                       "'vegetation' = trees, forest, greenery; 'water' = water extent, "
-                       "coastline, land reclamation, flooding; 'built-up' = how much land is "
-                       "now built on / urban growth; 'any' = open questions like 'what "
-                       "changed', 'what is happening', 'what is being built here', "
-                       "'anything unusual' (even at a reservoir, park or airport).",
-        "parameters": {"type": "object", "required": ["topic"], "properties": {
-            "topic": {"type": "string", "enum": ["vegetation", "water", "built-up", "any"]},
-            "place": {"type": "string", "description": "Place name exactly as the user wrote "
-                      "it, anywhere in the world, with its city or country if the user gave "
-                      "one. Leave empty if the user drew a box."},
-            "start_year": {"type": "integer", "description": "Earlier year, e.g. 2019"},
-            "end_year": {"type": "integer", "description": "Later year; omit for 'now'"},
-        }}}},
-    {"type": "function", "function": {
-        "name": "describe_terrain",
-        "description": "Elevation, height, slope, hills or relief of an area (not change over "
-                       "time).",
-        "parameters": {"type": "object", "properties": {
-            "place": {"type": "string", "description": "Place name; empty if the user drew a "
-                      "box or gave coordinates."}}}}},
-    {"type": "function", "function": {
-        "name": "visibility_from",
-        "description": "What can be seen from a point: viewshed, line of sight, observation "
-                       "or vantage points.",
-        "parameters": {"type": "object", "properties": {
-            "place": {"type": "string", "description": "Place to stand at; empty if the user "
-                      "gave coordinates or drew a box."},
-            "radius_km": {"type": "number", "description": "How far to look; only if the user "
-                          "said"},
-            "observer_height_m": {"type": "number", "description": "Eye or mast height in "
-                                  "metres; only if the user said"}}}}},
-    {"type": "function", "function": {
-        "name": "count_activity",
-        "description": "Pattern of life at sea: how many ships or vessels are in an area on each "
-                       "satellite radar pass, how busy it is, and which days were unusual.",
-        "parameters": {"type": "object", "properties": {
-            "place": {"type": "string", "description": "Port, strait, anchorage or sea area; "
-                      "empty if the user drew a box."}}}}},
-    {"type": "function", "function": {
-        "name": "sharpen_image",
-        "description": "Show a sharper, higher-resolution (super-resolved, 2.5 m) image of an "
-                       "area, for viewing. Not for measuring change.",
-        "parameters": {"type": "object", "properties": {
-            "place": {"type": "string", "description": "Place name; empty if the user drew a box."},
-            "year": {"type": "integer", "description": "Only if the user named a year"}}}}},
-    {"type": "function", "function": {
-        "name": "cannot_answer_from_imagery",
-        "description": "Use when the question isn't about how a place looks or changed "
-                       "(e.g. prices, population, opinions), or no place can be determined.",
-        "parameters": {"type": "object", "required": ["reason"], "properties": {
-            "reason": {"type": "string"}}}}},
-]
-
-
-class LLMPlanner:
-    def __init__(self, model: str = llm.MODEL) -> None:
-        self.model = model
-        self.name = f"ollama:{model}"
-        self.fallback = RuleBasedPlanner()
-
-    def plan(self, question: str, today: date | None = None,
-             selection: aoi.BBox | None = None) -> Outcome:
-        today = today or date.today()
-        system = (
-            "You are the planner for GeoAsk, which answers questions about any place on Earth "
-            "by measuring Sentinel-2 satellite imagery. Always call exactly one tool. "
-            f"Today is {today.isoformat()}. Imagery exists from 2016 onwards. "
-            + ("The user has drawn a box on the map: that box is the area to analyse, "
-               "so leave place empty. " if selection else
-               "The user has not drawn a box, so the place must come from the question. ")
-            + "Never answer with numbers yourself.")
-        try:
-            msg = llm.chat([{"role": "system", "content": system},
-                            {"role": "user", "content": question}], tools=_TOOLS,
-                           model=self.model, timeout=60)
-        except llm.LLMUnavailable:
-            return self._fallback(question, today, selection, "LLM unavailable")
-        calls = msg.get("tool_calls") or []
-        if not calls:
-            return self._fallback(question, today, selection, "no tool chosen")
-        fn = calls[0]["function"]
-        args = fn.get("arguments") or {}
-        if isinstance(args, str):
-            try:
-                args = json.loads(args)
-            except ValueError:
-                return self._fallback(question, today, selection, "unreadable arguments")
-        if fn["name"] == "cannot_answer_from_imagery":
-            return Reply(f"{CAPABILITIES}", self.name)
-        if fn["name"] == "measure_change" and _VISIBILITY.search(question):
-            fn, args = {"name": "visibility_from"}, {}  # deterministic override, like _OPEN
-        if fn["name"] == "measure_change" and _SHARPEN.search(question) and not _OPEN.search(question):
-            fn = {"name": "sharpen_image"}
-        if fn["name"] == "measure_change" and _ACTIVITY.search(question) and not _OPEN.search(question):
-            fn = {"name": "count_activity"}
-        if fn["name"] == "count_activity":
-            try:
-                place = (aoi.from_bbox(selection) if selection else
-                         aoi.resolve(str(args["place"])) if args.get("place") else
-                         find_place_in_text(question))
-            except (KeyError, ValueError) as e:
-                return Clarify(str(e).strip("'\""), EXAMPLES)
-            if place is None:
-                return Clarify(f"{CAPABILITIES} Which area should I look at?", EXAMPLES)
-            return activity_plan(place, question, today, self.name)
-        if fn["name"] == "sharpen_image":
-            try:
-                place = (aoi.from_bbox(selection) if selection else
-                         aoi.resolve(str(args["place"])) if args.get("place") else
-                         find_place_in_text(question))
-            except (KeyError, ValueError) as e:
-                return Clarify(str(e).strip("'\""), EXAMPLES)
-            if place is None:
-                return Clarify(f"{CAPABILITIES} Which area should I look at?", EXAMPLES)
-            return sharpen_plan(place, question, today, self.name)
-        if fn["name"] in ("describe_terrain", "visibility_from"):
-            try:
-                place = (aoi.from_bbox(selection) if selection else
-                         aoi.resolve(str(args["place"])) if args.get("place") else
-                         find_place_in_text(question))
-            except (KeyError, ValueError) as e:
-                if fn["name"] == "describe_terrain" or not find_point_in_text(question):
-                    return Clarify(str(e).strip("'\""), EXAMPLES)
-                place = None
-            if fn["name"] == "visibility_from":
-                return point_plan("viewshed", question, self.name, place,
-                                  _num(args.get("radius_km")), _num(args.get("observer_height_m")))
-            if place is None and (pt := find_point_in_text(question)):
-                place = aoi.from_bbox((pt[0] - 0.01, pt[1] - 0.01, pt[0] + 0.01, pt[1] + 0.01),
-                                      mgrs.to_mgrs(*pt, 4), "named")
-            if place is None:
-                return Clarify(f"{CAPABILITIES} Which area should I look at?", EXAMPLES)
-            return terrain_plan(place, self.name)
-        topic = str(args.get("topic", "any")).lower()
-        if _OPEN.search(question):  # deterministic override: open questions → any change
-            topic = "any"
-        index = TOPICS.get(topic)
-        try:
-            if selection:
-                place = aoi.from_bbox(selection)
-            elif args.get("place"):
-                place = aoi.resolve(str(args["place"]))
-            else:
-                place = find_place_in_text(question)
-            if place is None:
-                return Clarify(f"{CAPABILITIES} Which area should I look at?", EXAMPLES)
-            # Years only count if the user gave them (or a relative period the model resolved).
-            said = {int(y) for y in re.findall(r"\b(20[12]\d)\b", question)}
-            relative = bool(_RELATIVE.search(question))
-            sy, ey = _int(args.get("start_year")), _int(args.get("end_year"))
-            sy = sy if (sy in said or relative) else (min(said) if said else None)
-            ey = ey if (ey in said or relative) else (max(said) if len(said) > 1 else None)
-            t0, t1 = windows(sy, ey, today)
-            return make_plan("index_change" if index else "embedding_change", place, t0, t1,
-                             self.name, index)
-        except (KeyError, ValueError) as e:
-            return Clarify(str(e).strip("'\""), EXAMPLES)
-
-    def _fallback(self, q, today, selection, why) -> Outcome:
-        out = self.fallback.plan(q, today, selection)
-        if isinstance(out, Plan):
-            out.planner = f"rule-based (fallback: {why})"
-        return out
-
-
 _OPEN = re.compile(r"what(?:'s| is| has)? (?:been |being )?(?:built|chang|happen)|"
                    r"anything (?:new|unusual|different)|unusual|what changed", re.IGNORECASE)
 _RELATIVE = re.compile(r"\b(last|past|recent|ago|since|over the)\b", re.IGNORECASE)
@@ -504,8 +330,3 @@ def _int(v) -> int | None:
         return int(v) if v not in (None, "") else None
     except (TypeError, ValueError):
         return None
-
-
-def default_planner() -> Planner:
-    """Ollama if its model is installed and running, else rule-based."""
-    return LLMPlanner() if llm.available() else RuleBasedPlanner()

@@ -1,16 +1,14 @@
 """Write the final answer, without letting the language model invent numbers.
 
 1. ``facts(result)`` turns a tool result into a short list of measured facts, numbers pre-formatted.
-2. The LLM writes 2–3 sentences from those facts only.
-3. ``numbers_ok`` checks every number in the text appears in the facts, the dates or the question.
-   If any doesn't, the deterministic ``template_answer`` is used instead, and the UI says so.
+2. The chat model reads those facts back from each tool.
+3. ``numbers_ok`` checks every number in the model's answer appears in a tool result or in what the
+   user wrote; any that doesn't is flagged in the app.
 """
 
 from __future__ import annotations
 
 import re
-
-from . import llm
 
 _NUM = re.compile(r"(?<![\w.])-?\d[\d,]*(?:\.\d+)?")
 
@@ -123,22 +121,3 @@ def numbers_ok(text: str, allowed_sources: list[str]) -> tuple[bool, list[str]]:
             allowed |= {y, m, day, str(int(m)), str(int(day))}
     bad = [m for m in _NUM.findall(text) if _norm(m) not in allowed]
     return (not bad, bad)
-
-
-def write(question: str, r: dict, model: str = llm.MODEL) -> tuple[str, str]:
-    """Return (answer text, source), where source is the model name or 'template'."""
-    fs = facts(r)
-    prompt = ("Answer the user's question in 2-3 plain sentences using ONLY these measured "
-              "facts. Use the numbers exactly as written; don't compute new numbers or add "
-              "any others. Don't speculate about causes. Speak directly to the user as GeoAsk; "
-              "never mention 'facts' or 'the data provided'.\n\n"
-              "Facts:\n- " + "\n- ".join(fs) + f"\n\nQuestion: {question}")
-    try:
-        msg = llm.chat([{"role": "user", "content": prompt}], model=model, timeout=60)
-        text = (msg.get("content") or "").strip()
-    except llm.LLMUnavailable:
-        return template_answer(r), "template"
-    ok, _bad = numbers_ok(text, fs + [question])
-    if not text or not ok:
-        return template_answer(r), "template (the model's wording failed the number check)"
-    return text, model

@@ -14,6 +14,9 @@
     compass: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/>',
     home: '<path d="M4 11 12 4l8 7"/><path d="M6 10v9h12v-9"/>',
     chevron: '<path d="m9 6 6 6-6 6"/>',
+    'chev-down': '<path d="m6 9 6 6 6-6"/>',
+    gear: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/>',
+    wand: '<path d="m4 20 11-11M14 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2ZM19 11l.6 1.2 1.2.6-1.2.6L19 14.6l-.6-1.2-1.2-.6 1.2-.6L19 11Z"/>',
     'panel-left': '<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/>',
     'plus-square': '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8.5v7M8.5 12h7"/>',
     'arrow-up': '<path d="M12 19V6M6.5 11.5 12 6l5.5 5.5"/>',
@@ -163,7 +166,7 @@
     const collapsed = document.body.classList.contains('panel-collapsed');
     const narrow = innerWidth <= 760;
     return narrow ? { top: 80, bottom: collapsed ? 140 : innerHeight * 0.58 + 40, left: 30, right: 70 }
-      : { top: 80, bottom: 110, left: collapsed ? 60 : 470, right: 80 };
+      : { top: 80, bottom: 110, left: collapsed ? 60 : panel.offsetWidth + 50, right: 80 };
   };
 
   // ---------- draw an area ----------
@@ -183,6 +186,7 @@
     const chip = $('#selection');
     chip.hidden = !selection;
     $('#quick').hidden = !selection;
+    if (selection && pendingArea) { const j = pendingArea; pendingArea = null; runDirect(j); }
     if (selection) {
       $('#sel-text').textContent = `Selected area · ${bboxKm2(selection).toFixed(1)} km²`;
       askBox.focus();
@@ -520,11 +524,35 @@
     panelBtn.setAttribute('aria-expanded', !c);
     panelBtn.setAttribute('aria-label', c ? 'Show panel' : 'Hide panel'); panelBtn.title = `${c ? 'Show' : 'Hide'} panel (\\)`;
     if (!c) $('#ask').focus({ preventScroll: true });
-  };
+  }
   panelBtn.onclick = () => setCollapsed(panel.dataset.collapsed !== 'true');
+
+  // Resizable panel: drag the edge, or focus it and use ←/→. Double-click resets. Remembered.
+  const resizer = $('#resizer');
+  const PW = { min: 320, max: 760, def: 420 };
+  function setPanelWidth(w, save = true) {
+    w = Math.round(Math.min(Math.max(w, PW.min), Math.min(PW.max, innerWidth - 140)));
+    document.documentElement.style.setProperty('--panel-w', `${w}px`);
+    resizer.setAttribute('aria-valuenow', w);
+    if (save) try { localStorage.setItem('geoask.panelW', w); } catch { /* ignore */ }
+  }
+  try { const w = +localStorage.getItem('geoask.panelW'); if (w) setPanelWidth(w, false); } catch { /* ignore */ }
+  resizer.addEventListener('pointerdown', e => {
+    e.preventDefault(); resizer.setPointerCapture(e.pointerId); document.body.classList.add('resizing');
+    const left = panel.getBoundingClientRect().left;
+    const move = ev => setPanelWidth(ev.clientX - left);
+    const up = () => { resizer.removeEventListener('pointermove', move); document.body.classList.remove('resizing'); map.resize(); };
+    resizer.addEventListener('pointermove', move); resizer.addEventListener('pointerup', up, { once: true });
+  });
+  resizer.addEventListener('keydown', e => {
+    const w = +resizer.getAttribute('aria-valuenow');
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); setPanelWidth(w + (e.key === 'ArrowRight' ? 24 : -24)); }
+  });
+  resizer.addEventListener('dblclick', () => setPanelWidth(PW.def));
+
+  let sessionId = null;
   $('#new-chat').onclick = () => {
-    if (!$('#pane-locate').hidden) { locLog.innerHTML = ''; locEmpty(); refreshLocStatus().then(st => { if (st && !st.available) showKeyCard(); }); clearLocMap(); return; }
-    clearResult(); log.innerHTML = ''; renderEmpty();
+    sessionId = null; clearResult(); clearLocMap(); clearAttachments(); log.innerHTML = ''; renderEmpty(); askBox.focus();
   };
 
   const log = $('#log');
@@ -533,46 +561,92 @@
         <div class="tool-h">${icon(t.icon, 'icon sm')}<b>${esc(t.title)}</b>${live ? '' : '<span class="badge">Replay</span>'}</div>
         <p>${esc(t.summary)}</p>
         ${t.available ? `<button class="chip" type="button" data-q="${esc(t.example)}">${esc(t.example)}</button>`
-          : `<p class="install">Not installed. Run <code>${esc(t.install)}</code></p>`}</div>`;
+          : `<p class="install">Not installed. ${esc(t.install)}</p>`}</div>`;
+    const noModel = live && modelInfo?.kind === 'none';
     log.innerHTML = `<div class="empty">
-      <h2>What would you like to investigate?</h2>
-      <p>Ask in your own words about any place on Earth, an area you draw, or coordinates (lat/lon, UTM or MGRS). Try one of these:</p>
+      <h2>What would you like to find out?</h2>
+      <p>Ask about any place on Earth, a box you draw, or coordinates. Add a photo to find where it was taken, then add clues to narrow it down.</p>
+      ${noModel ? `<div class="card connect"><h3>Connect a model</h3><p class="method">GeoAsk works with Claude, a local Ollama model or any OpenAI-compatible model. Without one, simple questions still work.</p><button class="btn primary" type="button" data-open-settings>Open Settings</button></div>` : ''}
+      <div class="tool locate-card"><div class="tool-h">${icon('photo', 'icon sm')}<b>Where was this photo taken?</b>${live ? '' : '<span class="badge">Replay</span>'}</div>
+        <p>The model reads signs, roads, plants, buildings, terrain and the sun, checks them against open map data and imagery, and answers with likely areas, never a pin.</p>
+        <button class="chip" type="button" data-sample>Try a sample photo</button></div>
       <div class="tools">${TOOLS.map(card).join('')}</div>
-      <p class="tip">Tips: draw a box ${icon('select', 'icon sm')} for quick actions on an area, right-click the map for a point card, and use ${icon('ruler', 'icon sm')} for distance, bearing and line of sight.</p></div>`;
+      <p class="tip">Tips: draw a box ${icon('select', 'icon sm')} for quick actions, use the tools menu ${icon('wand', 'icon sm')} to run a tool directly, right-click the map for a point card.</p></div>`;
     log.querySelectorAll('.chip[data-q]').forEach(b => b.onclick = () => ask(b.dataset.q));
+    log.querySelector('[data-sample]').onclick = trySample;
+    log.querySelector('[data-open-settings]')?.addEventListener('click', openSettings);
   }
 
-  // composer
+  // ---------- composer: text, photos (attach, drop, paste) ----------
   const askBox = $('#ask'), send = $('#send');
+  const atts = [];  // {file, url}
+  const canSend = () => !busy && (askBox.value.trim() || atts.length);
   askBox.addEventListener('input', () => {
-    send.disabled = busy || !askBox.value.trim();
+    send.disabled = !canSend();
     askBox.style.height = 'auto'; askBox.style.height = Math.min(askBox.scrollHeight, 120) + 'px';
     askBox.classList.toggle('scroll', askBox.scrollHeight > 120);
   });
   askBox.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#ask-form').requestSubmit(); } });
-  $('#ask-form').addEventListener('submit', e => { e.preventDefault(); const t = askBox.value.trim(); if (t && !busy) ask(t); });
+  $('#ask-form').addEventListener('submit', e => { e.preventDefault(); if (canSend()) ask(askBox.value.trim()); });
+  function renderAtts() {
+    $('#att').innerHTML = atts.map((a, i) => `<div class="thumb"><img src="${a.url}" alt="Photo ${i + 1}: ${esc(a.file.name)}"><button type="button" data-i="${i}" aria-label="Remove photo ${i + 1}">${icon('x', 'icon')}</button></div>`).join('');
+    $('#att').querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { const [a] = atts.splice(+b.dataset.i, 1); URL.revokeObjectURL(a.url); renderAtts(); });
+    send.disabled = !canSend();
+    askBox.placeholder = atts.length ? 'Add any clues you know' : 'Ask about a place or add a photo';
+  }
+  function addFiles(list) {
+    const imgs = [...list].filter(f => f.type.startsWith('image/'));
+    const room = 5 - atts.length;
+    if (imgs.length > room) toast(room ? `Only ${room} more photo${room > 1 ? 's' : ''} can be added.` : 'Up to 5 photos per message.');
+    imgs.slice(0, room).forEach(file => atts.push({ file, url: URL.createObjectURL(file) }));
+    renderAtts(); askBox.focus();
+  }
+  function clearAttachments() { atts.splice(0).forEach(a => URL.revokeObjectURL(a.url)); renderAtts(); }
+  const fileIn = $('#file');
+  $('#attach').onclick = () => fileIn.click();
+  fileIn.onchange = () => { addFiles(fileIn.files); fileIn.value = ''; };
+  ['dragenter', 'dragover'].forEach(ev => panel.addEventListener(ev, e => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); panel.classList.add('drop-over'); } }));
+  ['dragleave', 'drop'].forEach(ev => panel.addEventListener(ev, e => { e.preventDefault(); panel.classList.remove('drop-over'); }));
+  panel.addEventListener('drop', e => e.dataTransfer?.files?.length && addFiles(e.dataTransfer.files));
+  document.addEventListener('paste', e => { if (e.clipboardData?.files?.length) addFiles(e.clipboardData.files); });
+  async function trySample() {
+    if (!live) return replayLocate();
+    const blob = await (await fetch('../gallery/locate/photo.jpg')).blob();
+    addFiles([new File([blob], 'sample-street.jpg', { type: 'image/jpeg' })]);
+    askBox.value = 'Where was this photo taken?'; askBox.dispatchEvent(new Event('input'));
+  }
 
-  // ---------- asking ----------
-  async function ask(question) {
-    busy = true; send.disabled = true;
+  // ---------- asking: one chat, one model, every tool ----------
+  let modelInfo = null, lastQuestion = '';
+  function newTurn(question, photos = []) {
     log.querySelector('.empty')?.remove();
     const box = selection;
-    log.insertAdjacentHTML('beforeend', `<div class="msg-user">${esc(question)}${box ? `<br><small>${icon('select', 'icon sm')} selected area</small>` : ''}</div>`);
-    askBox.value = ''; askBox.dispatchEvent(new Event('input'));
+    const u = document.createElement('div'); u.className = 'msg-user';
+    u.innerHTML = `${photos.length ? `<div class="u-photos">${photos.map(p => `<img src="${p.url}" alt="${esc(p.file.name)}">`).join('')}</div>` : ''}${esc(question)}${box ? `<small>${icon('select', 'icon sm')} selected area</small>` : ''}`;
+    log.appendChild(u);
     const bot = document.createElement('div'); bot.className = 'msg-bot'; log.appendChild(bot);
-    const ctx = { bot, steps: null, question, box };
+    return { bot, steps: null, trace: null, question, box };
+  }
+  async function ask(question) {
+    const photos = atts.slice();
+    if (!question && photos.length) question = 'Where was this photo taken?';
+    lastQuestion = question;
+    busy = true; send.disabled = true;
+    const ctx = newTurn(question, photos);
+    askBox.value = ''; askBox.dispatchEvent(new Event('input'));
+    atts.splice(0); renderAtts();  // the photos now belong to the message (object URLs kept for it)
     try {
-      if (live) await askLive(question, ctx); else await askDemo(question, ctx);
+      if (live) await askLive(question, photos, ctx);
+      else if (photos.length) await replayLocate(ctx);
+      else await askDemo(question, ctx);
     } catch (err) {
-      showError(ctx, `Couldn't reach GeoAsk: ${err.message}`, 'Make sure `geoask serve` is still running, then try again.');
+      showError(ctx, `Couldn't reach GeoAsk: ${err.message}`, 'Make sure geoask serve is still running, then try again.');
     } finally {
-      busy = false; send.disabled = !askBox.value.trim(); finishSteps(ctx);
+      busy = false; send.disabled = !canSend(); finishSteps(ctx);
       log.scrollTop = log.scrollHeight;
     }
   }
-
-  async function askLive(question, ctx) {
-    const res = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, bbox: ctx.box }) });
+  async function streamInto(res, ctx) {
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
     const reader = res.body.getReader(), dec = new TextDecoder();
     let buf = '';
@@ -584,24 +658,54 @@
       while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line.trim()) handle(JSON.parse(line), ctx); }
     }
   }
+  async function askLive(question, photos, ctx) {
+    const fd = new FormData();
+    fd.append('message', question); fd.append('session', sessionId || '');
+    if (ctx.box) fd.append('bbox', JSON.stringify(ctx.box));
+    photos.forEach(p => fd.append('files', p.file, p.file.name));
+    await streamInto(await fetch('/api/chat', { method: 'POST', body: fd }), ctx);
+  }
 
+  // Every event from the chat, the toolbar or a demo replay lands here.
   function handle(ev, ctx) {
-    if (ev.type === 'plan') {
-      showPlan(ctx, ev);
-      const pt = ev.args?.lon != null ? [ev.args.lon, ev.args.lat] : null;
-      const b = ev.args?.bbox || places[ev.args?.place] || (pt && [pt[0] - 0.03, pt[1] - 0.03, pt[0] + 0.03, pt[1] + 0.03]);
-      if (b) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), duration: reduceMotion ? 0 : 1100, maxZoom: 15 });
+    const fly = b => b && map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), duration: reduceMotion ? 0 : 1100, maxZoom: 15 });
+    switch (ev.type) {
+      case 'session': sessionId = ev.id; break;
+      case 'model': ctx.model = ev.label; break;
+      case 'plan': {
+        showPlan(ctx, ev);
+        const pt = ev.args?.lon != null ? [ev.args.lon, ev.args.lat] : null;
+        fly(ev.args?.bbox || places[ev.args?.place] || (pt && [pt[0] - 0.03, pt[1] - 0.03, pt[0] + 0.03, pt[1] + 0.03]));
+        break;
+      }
+      case 'photos': { ensureTrace(ctx); const g = ev.photos.filter(p => p.meta?.gps).length; addStep(ctx, `Read ${ev.photos.length} photo${ev.photos.length > 1 ? 's' : ''} on this computer${g ? `: ${g} with camera GPS` : ''} (metadata stays here)`); break; }
+      case 'recorded':
+        map.getSource('loc-recorded')?.setData({ type: 'FeatureCollection', features: ev.points.map(p => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) });
+        ensureTrace(ctx);
+        ctx.trace.insertAdjacentHTML('beforebegin', `<p class="lead">${icon('pin', 'icon sm')} Camera GPS: ${ev.points.map(p => esc(Geo.toMGRS(p.lon, p.lat, 4) || Geo.format(p.lon, p.lat, 'dd'))).join(', ')} <span class="method">(from the photo, not AI; amber dot)</span></p>`);
+        break;
+      case 'step': addStep(ctx, ev.text); if (ev.error) ctx.steps.lastElementChild?.classList.add('err'); break;
+      case 'thinking': ensureTrace(ctx); ctx.steps.insertAdjacentHTML('beforeend', `<li class="think done">${esc(ev.text)}</li>`); break;
+      case 'note': ensureTrace(ctx); finishSteps(ctx, true); ctx.steps.insertAdjacentHTML('beforeend', `<li class="note done">${esc(ev.text)}</li>`); ctx.trace.querySelector('.t-label').textContent = ev.text; break;
+      case 'evidence':
+        if (ev.kind === 'photos') { ensureTrace(ctx); ctx.steps.insertAdjacentHTML('beforeend', `<li class="ev done"><div class="evidence">${ev.items.map(p => `<figure><a href="${esc(p.page)}" target="_blank" rel="noopener"><img src="${esc(p.thumb)}" alt="Reference photo: ${esc(p.title)}" loading="lazy"></a><figcaption>${esc(p.source)} · ${esc(p.author)} · ${esc(p.licence)}</figcaption></figure>`).join('')}</div></li>`); }
+        break;
+      case 'usage': {
+        const t = ev.tokens || {};
+        ctx.costText = ev.cost_usd ? `≈ $${ev.cost_usd.toFixed(2)}` : '';
+        ctx.tokens = `${(t.input_tokens || 0).toLocaleString()} tokens in, ${(t.output_tokens || 0).toLocaleString()} out`;
+        ctx.model = ev.model || ctx.model;
+        if (ctx.trace) traceCount(ctx);
+        break;
+      }
+      case 'result': showResult(ctx, ev.result, ev.result.base); break;
+      case 'estimate': showEstimate(ctx, ev.estimate); break;
+      case 'clarify': showClarify(ctx, ev.message, ev.suggestions); fly(ev.bbox); break;
+      case 'reply': showClarify(ctx, ev.message, ev.suggestions); break;
+      case 'fly': fly(ev.bbox); break;
+      case 'answer': showAnswer(ctx, ev.text, ev.source, ev.unverified || []); break;
+      case 'error': showError(ctx, ev.message, ev.hint); break;
     }
-    else if (ev.type === 'step') addStep(ctx, ev.text);
-    else if (ev.type === 'result') showResult(ctx, ev.result, ev.result.base);
-    else if (ev.type === 'clarify') {
-      showClarify(ctx, ev.message, ev.suggestions);
-      const b = ev.bbox;  // a place we found but can't analyse whole: show it so the user can draw part of it
-      if (b) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: pad(), duration: reduceMotion ? 0 : 1100, maxZoom: 15 });
-    }
-    else if (ev.type === 'reply') showClarify(ctx, ev.message, ev.suggestions);
-    else if (ev.type === 'answer') showAnswer(ctx, ev.text, ev.source);
-    else if (ev.type === 'error') showError(ctx, ev.message, ev.hint);
     log.scrollTop = log.scrollHeight;
   }
 
@@ -641,13 +745,19 @@
     }
     ctx.steps?.querySelectorAll('li:not(.done)').forEach(li => { li.classList.add('done'); const d = li.querySelector('.dot'); if (d) d.innerHTML = icon('check', 'icon sm'); li.lastElementChild.textContent = li.lastElementChild.textContent.replace(/…$/, ''); });
   }
-  function showAnswer(ctx, text, source) {
+  // The model's reply. Numbers not found in any tool result or in what the user wrote are
+  // highlighted, so a reader can tell a measurement from a model's guess.
+  function showAnswer(ctx, text, source, unverified = []) {
     finishSteps(ctx);
-    const by = source.includes('recorded') ? 'Recorded answer from a live run (fixed wording)' : source.startsWith('template') ? `Fixed wording${source.includes('number check') ? ': the model’s wording failed the number check' : ''}` : `Written by ${source} on this computer from the measurements`;
+    const bad = new Set(unverified);
+    const fmt = t => esc(t)
+      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+      .replace(/(?<![\w.])-?\d[\d,]*(?:\.\d+)?/g, m => bad.has(m) ? `<mark class="unverified" title="Not found in any measurement">${m}</mark>` : m);
+    const paras = String(text).split(/\n{2,}|\n(?=[-•] )/).map(p => `<p>${fmt(p.trim())}</p>`).join('');
+    const by = /recorded/.test(source) ? 'Recorded answer from a live run' : /rule-based/.test(source) ? 'Fixed wording (no model)' : `Answer by ${source}`;
     const el = document.createElement('div'); el.className = 'answer';
-    el.innerHTML = `<p>${esc(text)}</p><div class="src">${icon('sparkle', 'icon sm')}${esc(by)}</div>`;
-    const card = ctx.bot.querySelector('.card');
-    card ? ctx.bot.insertBefore(el, card) : ctx.bot.appendChild(el);
+    el.innerHTML = `${paras}<div class="src">${icon('sparkle', 'icon sm')}${esc(by)}${bad.size ? ` · <span class="warn">${bad.size} number${bad.size > 1 ? 's' : ''} not from a measurement (highlighted)</span>` : ''}</div>`;
+    ctx.bot.appendChild(el);
   }
   function showClarify(ctx, message, suggestions = []) {
     ctx.bot.insertAdjacentHTML('beforeend', `<p>${esc(message)}</p><div class="chips">${suggestions.map(s => `<button class="chip" type="button">${esc(s)}</button>`).join('')}</div>`);
@@ -770,6 +880,8 @@
   }
 
   function showResult(ctx, r, base) {
+    if (r.tool === 'enhance') return showEnhanced(ctx, r, base);
+    if (r.tool === 'line_of_sight') { finishSteps(ctx); ctx.bot.appendChild(losCard(r)); return; }
     if (r.tool === 'activity') return showActivity(ctx, r, base);
     if (r.tool === 'terrain' || r.tool === 'viewshed') return showSingle(ctx, r, base);
     if (r.tool === 'super_resolve') return showSharpened(ctx, r, base);
@@ -846,62 +958,7 @@
   }
 
 
-  // ---------- Locate: where was this photo taken? ----------
-  // A Claude agent (server side) reasons over the photos and checks ideas with open-data tools.
-  // HIG › Generative AI: disclose AI use and what is sent, ask once before sending, show specific
-  // progress, offer alternatives (ranked areas), let people refine ("Not Here", Try Again).
-  const tabs = { ask: $('#tab-ask'), locate: $('#tab-locate') };
-  function setTab(t) {
-    for (const [k, b] of Object.entries(tabs)) b.setAttribute('aria-selected', k === t);
-    $('#pane-ask').hidden = t !== 'ask'; $('#pane-locate').hidden = t !== 'locate';
-    document.body.classList.toggle('locate-mode', t === 'locate');  // the imagery timeline isn't used here
-    try { localStorage.setItem('geoask.tab', t); } catch { /* ignore */ }
-    if (t === 'locate' && !locLog.children.length) locEmpty();
-    if (t === 'locate' && live) refreshLocStatus().then(st => { if (st && !st.available && !locLog.querySelector('.key-card')) showKeyCard(); });
-  }
-  Object.entries(tabs).forEach(([k, b]) => {
-    b.onclick = () => setTab(k);
-    b.addEventListener('keydown', e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const o = k === 'ask' ? 'locate' : 'ask'; setTab(o); tabs[o].focus(); } });
-  });
-
-  const locLog = $('#loc-log'), locFiles = [], locGo = $('#loc-go');
-  let locModel = 'sonnet', locBusy = false, locLast = null;
-  const fileInput = $('#loc-file'), drop = $('#loc-drop');
-  function locEmpty() {
-    locLog.innerHTML = `<div class="empty">
-      <h2>Where was this photo taken?</h2>
-      <p>Add one or more photos of the same place: street views, travel photos, drone or satellite images. Claude reads the clues (signs, roads, plants, buildings, terrain, sun) and checks them against open map data, reference photos and satellite imagery.</p>
-      <div class="tool"><div class="tool-h">${icon('check', 'icon sm')}<b>Works best with</b></div><p>Outdoor scenes with roads, signs, buildings, coastlines or mountains; several photos of one place; aerial views with distinctive shapes.</p></div>
-      <div class="tool"><div class="tool-h">${icon('info', 'icon sm')}<b>What you get</b></div><p>Up to three areas on the map, each with a likelihood and the reasons behind it. Never an exact spot, and never anything about who is in a photo.</p></div>
-      ${live ? '' : `<p class="tip">Locate runs on your computer with <code>geoask serve</code> and an Anthropic API key. On this demo page you can replay a real run.</p><button class="btn primary" type="button" id="loc-replay">${icon('photo', 'icon sm')}Replay a Real Run</button>`}</div>`;
-    locLog.querySelector('#loc-replay')?.addEventListener('click', replayLocate);
-  }
-  function renderThumbs() {
-    $('#loc-photos').innerHTML = locFiles.map((f, i) => `<div class="thumb"><img src="${f.url}" alt="Photo ${i + 1}: ${esc(f.file.name)}"><span class="n">${i + 1}</span><button type="button" data-i="${i}" aria-label="Remove photo ${i + 1}">${icon('x', 'icon')}</button></div>`).join('');
-    $('#loc-photos').querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { const [f] = locFiles.splice(+b.dataset.i, 1); URL.revokeObjectURL(f.url); renderThumbs(); });
-    locGo.disabled = locBusy || !locFiles.length;
-    $('#loc-drop b').textContent = locFiles.length ? 'Add More Photos' : 'Add Photos';
-    drop.classList.toggle('mini', locFiles.length > 0);  // give the results room once photos are in
-  }
-  function addFiles(list) {
-    const imgs = [...list].filter(f => f.type.startsWith('image/'));
-    const room = 5 - locFiles.length;
-    if (imgs.length > room) toast(room ? `Only ${room} more photo${room > 1 ? 's' : ''} can be added (5 at most).` : 'Up to 5 photos per run.');
-    imgs.slice(0, room).forEach(file => locFiles.push({ file, url: URL.createObjectURL(file) }));
-    renderThumbs();
-  }
-  fileInput.onchange = () => { addFiles(fileInput.files); fileInput.value = ''; };
-  const pane = $('#pane-locate');
-  ['dragenter', 'dragover'].forEach(ev => pane.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
-  ['dragleave', 'drop'].forEach(ev => pane.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
-  pane.addEventListener('drop', e => addFiles(e.dataTransfer.files));
-  document.addEventListener('paste', e => { if (!$('#pane-locate').hidden && e.clipboardData?.files?.length) addFiles(e.clipboardData.files); });
-  document.querySelectorAll('[data-model]').forEach(b => b.onclick = () => {
-    locModel = b.dataset.model;
-    document.querySelectorAll('[data-model]').forEach(x => x.setAttribute('aria-checked', x === b));
-  });
-
-  // map layers for candidate areas and camera-recorded positions
+  // ---------- location estimates on the map ----------
   const circle = (lon, lat, km, n = 72) => {
     const pts = [];
     for (let i = 0; i <= n; i++) {
@@ -915,10 +972,10 @@
     map.addLayer({ id: 'loc-fill', type: 'fill', source: 'loc-areas', paint: { 'fill-color': ['case', ['==', ['get', 'rank'], 1], '#5aa9ff', '#f5b84a'], 'fill-opacity': ['case', ['==', ['get', 'rank'], 1], 0.18, 0.08] } });
     map.addLayer({ id: 'loc-line', type: 'line', source: 'loc-areas', paint: { 'line-color': ['case', ['==', ['get', 'rank'], 1], '#8cc2ff', '#f5b84a'], 'line-width': ['case', ['==', ['get', 'rank'], 1], 2.2, 1.4], 'line-dasharray': ['case', ['==', ['get', 'rank'], 1], ['literal', [1, 0]], ['literal', [3, 2]]] } });
     map.addSource('loc-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: 'loc-pt', type: 'circle', source: 'loc-labels', paint: { 'circle-radius': ['case', ['==', ['get', 'rank'], 1], 9, 7], 'circle-color': ['case', ['==', ['get', 'rank'], 1], '#1f6fe5', '#b07a17'], 'circle-stroke-color': '#e8eef6', 'circle-stroke-width': 1.5 } });
+    map.addLayer({ id: 'loc-num', type: 'symbol', source: 'loc-labels', layout: { 'text-field': ['to-string', ['get', 'rank']], 'text-size': 11, 'text-font': ['Noto Sans Regular'], 'text-allow-overlap': true }, paint: { 'text-color': '#fff' } });
     map.addLayer({ id: 'loc-label', type: 'symbol', source: 'loc-labels', layout: { 'text-field': ['get', 'title'], 'text-size': 13, 'text-font': ['Noto Sans Regular'], 'text-offset': [0, 1.4], 'text-anchor': 'top' },
       paint: { 'text-color': '#e8eef6', 'text-halo-color': '#070b12', 'text-halo-width': 1.6 } });
-    map.addLayer({ id: 'loc-pt', type: 'circle', source: 'loc-labels', paint: { 'circle-radius': ['case', ['==', ['get', 'rank'], 1], 9, 7], 'circle-color': ['case', ['==', ['get', 'rank'], 1], '#1f6fe5', '#b07a17'], 'circle-stroke-color': '#e8eef6', 'circle-stroke-width': 1.5 } }, 'loc-label');
-    map.addLayer({ id: 'loc-num', type: 'symbol', source: 'loc-labels', layout: { 'text-field': ['to-string', ['get', 'rank']], 'text-size': 11, 'text-font': ['Noto Sans Regular'], 'text-allow-overlap': true }, paint: { 'text-color': '#fff' } });
     map.addSource('loc-recorded', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer({ id: 'loc-recorded', type: 'circle', source: 'loc-recorded', paint: { 'circle-radius': 7, 'circle-color': '#f5b84a', 'circle-stroke-color': '#070b12', 'circle-stroke-width': 2 } });
   });
@@ -932,206 +989,269 @@
     const lons = pts.map(p => p[0]), lats = pts.map(p => p[1]);
     map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: pad(), duration: reduceMotion ? 0 : 1200, maxZoom: 15 });
   }
-
-  function locMsg() { locLog.querySelector('.empty')?.remove(); const el = document.createElement('div'); el.className = 'msg-bot'; locLog.appendChild(el); return el; }
-  function consentFirst() {
-    let ok = false;
-    try { ok = localStorage.getItem('geoask.locateConsent') === '1'; } catch { /* ignore */ }
-    if (ok) return Promise.resolve(true);
-    return new Promise(resolve => {
-      const el = locMsg();
-      el.innerHTML = `<div class="card consent" role="group" aria-label="Before sending photos">
-        <h3>Send photos to Claude?</h3>
-        <p class="method">Locate sends your ${locFiles.length > 1 ? `${locFiles.length} photos` : 'photo'} to Anthropic’s Claude API with metadata removed (under Anthropic’s commercial terms, API data isn’t used for training). Map searches go to OpenStreetMap, Wikimedia Commons and Panoramax with coordinates only, never your photos. A run costs roughly $0.03–0.20 with Sonnet 5.5, less with Haiku 5.5.</p>
-        <div class="actions"><button class="btn primary" type="button" data-ok>Continue</button><button class="btn" type="button" data-no>Cancel</button></div></div>`;
-      el.querySelector('[data-ok]').onclick = () => { try { localStorage.setItem('geoask.locateConsent', '1'); } catch { /* ignore */ } el.remove(); resolve(true); };
-      el.querySelector('[data-no]').onclick = () => { el.remove(); if (!locLog.children.length) locEmpty(); resolve(false); };
-      el.querySelector('[data-ok]').focus();
-    });
-  }
-
-  // ---- API key: paste once, saved on this computer only. Pasting saves automatically. ----
-  let locStatus = null, pendingRun = null;
-  async function refreshLocStatus() {
-    if (!live) return null;
-    try { locStatus = await (await fetch('/api/locate/status')).json(); } catch { locStatus = null; }
-    const k = $('#loc-key');
-    if (k) k.innerHTML = locStatus?.available
-      ? `Claude key ${esc(locStatus.key || 'set')} saved on this computer. <button class="link" type="button" data-change>Change Key</button> · <button class="link" type="button" data-remove>Remove Key</button>`
-      : 'No Claude key yet.';
-    k?.querySelector('[data-change]')?.addEventListener('click', () => showKeyCard(true));
-    k?.querySelector('[data-remove]')?.addEventListener('click', async () => {
-      await fetch('/api/locate/key', { method: 'DELETE' }); await refreshLocStatus(); toast('Key removed from this computer.'); showKeyCard();
-    });
-    return locStatus;
-  }
-  function showKeyCard(changing = false) {
-    locLog.querySelector('.key-card')?.remove();
-    const el = document.createElement('div'); el.className = 'card key-card';
-    el.innerHTML = `<h3>${changing ? 'Change Claude Key' : 'Connect Claude'}</h3>
-      <p class="method">Locate uses Claude through your Anthropic API key. Paste it below: it’s checked with Anthropic, saved only on this computer, and never shown again. <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get a key</a></p>
-      <form class="key-form" autocomplete="off">
-        <label for="key-in" class="sr-only">Anthropic API key</label>
-        <input id="key-in" type="password" inputmode="text" spellcheck="false" autocomplete="off" placeholder="Paste key: sk-ant-…" aria-describedby="key-msg">
-        <button class="btn primary" type="submit">Connect</button>
-      </form>
-      <p class="key-msg" id="key-msg" role="status"></p>`;
-    locLog.prepend(el);
-    const input = el.querySelector('#key-in'), btn = el.querySelector('button[type=submit]'), msg = el.querySelector('#key-msg');
-    const submit = async () => {
-      const key = input.value.trim(); if (!key) { input.focus(); return; }
-      btn.disabled = true; btn.textContent = 'Checking…'; msg.className = 'key-msg'; msg.textContent = 'Checking the key with Anthropic…';
-      try {
-        const r = await fetch('/api/locate/key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.detail || `HTTP ${r.status}`);
-        input.value = '';
-        el.remove(); await refreshLocStatus();
-        toast(`Claude connected (${j.key}).`);
-        if (pendingRun) { const go = pendingRun; pendingRun = null; go(); }
-      } catch (e) {
-        msg.className = 'key-msg err'; msg.textContent = e.message; btn.disabled = false; btn.textContent = 'Connect'; input.focus(); input.select();
-      }
-    };
-    el.querySelector('form').onsubmit = e => { e.preventDefault(); submit(); };
-    // Minimal clicks: a paste that looks like a key is submitted straight away.
-    input.addEventListener('paste', () => setTimeout(() => { if (/sk-ant-/.test(input.value)) submit(); }, 0));
-    input.focus({ preventScroll: true });
-    locLog.scrollTop = 0;
-  }
-
-  // Demo mode: replay a recorded live run (scripts/record_locate.py), event by event.
-  async function replayLocate() {
-    const base = '../gallery/locate/';
-    const run = await (await fetch(base + 'run.json')).json();
-    locLog.innerHTML = '';
-    const user = document.createElement('div'); user.className = 'msg-user';
-    user.innerHTML = `1 photo · recorded run<br><small>${esc(run.model)} · ${esc(run.credit)}</small>`;
-    locLog.appendChild(user);
-    const ctx = { bot: locMsg(), steps: null, trace: null };
-    ensureTrace(ctx);
-    ctx.trace.insertAdjacentHTML('beforebegin', `<div class="loc-photos"><div class="thumb wide"><img src="${base + run.photo}" alt="Photo to locate: a hillside street with timber houses"></div></div>`);
-    addStep(ctx, 'Read 1 photo on this computer');
-    let last = 0;
-    for (const ev of run.events) {
-      await sleep(Math.min(1400, Math.max(250, (ev.t - last) * 120)));
-      last = ev.t;
-      ctx.t0 = performance.now() - ev.t * 1000;  // the trace shows the recorded run's timing
-      locEvent(ev, ctx); locLog.scrollTop = locLog.scrollHeight;
-    }
-  }
-
-  async function runLocate(extraNote = '') {
-    if (!locFiles.length || locBusy) return;
-    if (!live) { const el = locMsg(); el.innerHTML = `<p>Locate runs on your own computer with <code>geoask serve</code> and an Anthropic API key, so it can’t run on this demo page.</p><div class="plan">uv pip install -e ".[serve,locate]"<br>echo "ANTHROPIC_API_KEY=…" &gt; .env<br>geoask serve</div>`; return; }
-    const st = await refreshLocStatus();
-    if (!st?.available) { pendingRun = () => runLocate(extraNote); showKeyCard(); return; }
-    if (!(await consentFirst())) return;
-    locBusy = true; locGo.disabled = true; locGo.textContent = 'Locating…';
-    const note = [$('#loc-note').value.trim(), extraNote].filter(Boolean).join('. ');
-    const fd = new FormData();
-    locFiles.forEach(f => fd.append('files', f.file, f.file.name));
-    fd.append('note', note); fd.append('model', locModel); fd.append('share_meta', $('#loc-meta').checked);
-    locLast = { note: $('#loc-note').value.trim() };
-    const user = document.createElement('div'); user.className = 'msg-user';
-    user.innerHTML = `${locFiles.length} photo${locFiles.length > 1 ? 's' : ''}${note ? ` · ${esc(note)}` : ''}<br><small>${locModel === 'sonnet' ? 'Claude Sonnet 5.5' : 'Claude Haiku 5.5'}</small>`;
-    locLog.querySelector('.empty')?.remove(); locLog.appendChild(user);
-    const ctx = { bot: locMsg(), steps: null, trace: null };
-    ensureTrace(ctx);
-    map.getSource('loc-areas')?.setData({ type: 'FeatureCollection', features: [] });
-    map.getSource('loc-labels')?.setData({ type: 'FeatureCollection', features: [] });
-    try {
-      const res = await fetch('/api/locate', { method: 'POST', body: fd });
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-      const reader = res.body.getReader(), dec = new TextDecoder();
-      let buf = '';
-      for (;;) {
-        const { value, done } = await reader.read(); if (done) break;
-        buf += dec.decode(value, { stream: true });
-        let i; while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line.trim()) locEvent(JSON.parse(line), ctx); }
-        locLog.scrollTop = locLog.scrollHeight;
-      }
-    } catch (err) {
-      locError(ctx, `Couldn't reach GeoAsk: ${err.message}`, 'Make sure geoask serve is still running, then try again.');
-    } finally {
-      locBusy = false; locGo.textContent = 'Locate'; renderThumbs(); finishSteps(ctx);
-    }
-  }
-  locGo.onclick = () => runLocate();
-
-  const locStep = (ctx, text) => addStep(ctx, text);
-  function locError(ctx, message, hint) {
-    finishSteps(ctx);
-    ctx.bot.insertAdjacentHTML('beforeend', `<div class="card error" role="alert"><h3>Couldn't locate these photos</h3><p>${esc(message)}</p>${hint ? `<p class="method">${esc(hint)}</p>` : ''}<div class="actions"><button class="btn retry" type="button">${icon('retry', 'icon sm')}Try Again</button></div></div>`);
-    ctx.bot.querySelector('.retry:last-of-type').onclick = () => runLocate();
-  }
-  function locEvent(ev, ctx) {
-    if (ev.type === 'photos') {
-      const withGps = ev.photos.filter(p => p.meta?.gps).length;
-      ctx.trace.insertAdjacentHTML('beforebegin', `<div class="loc-photos">${ev.photos.map(p => `<div class="thumb"><img src="data:image/jpeg;base64,${p.thumb}" alt="Photo ${p.index}"><span class="n">${p.index}</span>${p.meta?.gps ? '<span class="gps">GPS</span>' : ''}</div>`).join('')}</div>`);
-      locStep(ctx, `Read ${ev.photos.length} photo${ev.photos.length > 1 ? 's' : ''} on this computer${withGps ? `: ${withGps} with camera GPS` : ''}`);
-    } else if (ev.type === 'recorded') {
-      map.getSource('loc-recorded')?.setData({ type: 'FeatureCollection', features: ev.points.map(p => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) });
-      ctx.trace.insertAdjacentHTML('beforebegin', `<p class="lead">${icon('pin', 'icon sm')} Camera GPS: ${ev.points.map(p => `${esc(Geo.toMGRS(p.lon, p.lat, 4) || Geo.format(p.lon, p.lat, 'dd'))}`).join(', ')} <span class="method">(from the photo, not AI; amber dot)</span></p>`);
-    } else if (ev.type === 'step') locStep(ctx, ev.text);
-    else if (ev.type === 'thinking') {
-      ctx.steps.insertAdjacentHTML('beforeend', `<li class="think done">${esc(ev.text)}</li>`);
-    } else if (ev.type === 'note') {
-      finishSteps(ctx); ctx.steps.insertAdjacentHTML('beforeend', `<li class="note done">${esc(ev.text)}</li>`);
-    } else if (ev.type === 'evidence') {
-      if (ev.kind === 'photos') {
-        ctx.steps.insertAdjacentHTML('beforeend', `<li class="ev done"><div class="evidence">${ev.items.map(p => `<figure><a href="${esc(p.page)}" target="_blank" rel="noopener"><img src="${esc(p.thumb)}" alt="Reference photo: ${esc(p.title)}" loading="lazy"></a><figcaption>${esc(p.source)} · ${esc(p.author)} · ${esc(p.licence)}</figcaption></figure>`).join('')}</div></li>`);
-      }
-    } else if (ev.type === 'usage') {
-      const t = ev.tokens || {};
-      ctx.costText = `≈ $${ev.cost_usd.toFixed(2)}`;
-      ctx.tokens = `${(t.input_tokens + (t.cache_read_input_tokens || 0) + (t.cache_creation_input_tokens || 0)).toLocaleString()} tokens in, ${(t.output_tokens || 0).toLocaleString()} out`;
-      traceCount(ctx);
-    } else if (ev.type === 'estimate') showEstimate(ctx, ev.estimate);
-    else if (ev.type === 'error') locError(ctx, ev.message, ev.hint);
-  }
-
   function clearLocMap() {
     ['loc-areas', 'loc-labels', 'loc-recorded'].forEach(id => map.getSource(id)?.setData({ type: 'FeatureCollection', features: [] }));
   }
   // Concise answer: headline, ranked areas (one line of why each), a few clue chips. Everything
-  // else (all clues, caveats, model, cost) sits behind "Details".
+  // else sits behind "Details". "Not here" and "Look again" continue the same conversation.
   function showEstimate(ctx, e) {
     finishSteps(ctx);
     showAreas(e.areas);
     const pct = c => `${Math.round(c * 100)}%`;
     const km = r => r < 1 ? `${Math.round(r * 1000)} m` : `${r < 10 ? r.toFixed(1) : Math.round(r)} km`;
     const rest = 1 - e.areas.reduce((s, a) => s + a.confidence, 0);
-    const strong = [...e.clues].sort((a, b) => ['strong', 'medium', 'weak'].indexOf(a.strength) - ['strong', 'medium', 'weak'].indexOf(b.strength));
+    const order = ['strong', 'medium', 'weak'];
+    const clues = [...e.clues].sort((a, b) => order.indexOf(a.strength) - order.indexOf(b.strength));
     const card = document.createElement('div'); card.className = 'card loc-card';
-    card.innerHTML = `<h3>${esc(e.summary)}</h3>
+    card.innerHTML = `<div class="kicker">${icon('pin', 'icon sm')}Location estimate</div><h3>${esc(e.summary)}</h3>
       ${e.country?.name ? `<div class="when">${esc(e.country.name)} · ${pct(e.country.confidence)}</div>` : ''}
       <ol class="areas">${e.areas.map((a, i) => `<li class="area" data-i="${i}">
         <button class="area-main" type="button" aria-label="Show area ${i + 1} on the map: ${esc(a.label)}, ${a.band} ${pct(a.confidence)}">
           <span class="rank">${i + 1}</span><span class="a-label">${esc(a.label)}</span><span class="band ${a.band}">${a.band} ${pct(a.confidence)}</span></button>
         <div class="meter" aria-hidden="true"><i style="width:${Math.max(2, a.confidence * 100)}%"></i></div>
         <p class="a-why">${esc(a.why)} <button class="link" type="button" data-not>Not here</button></p></li>`).join('')}</ol>
-      <div class="clues" aria-label="Key clues">${strong.slice(0, 4).map(c => `<span class="clue ${c.strength}" title="${esc(c.kind)}: ${esc(c.text)} (${c.strength})">${esc(c.text)}</span>`).join('')}</div>
+      <div class="clues" aria-label="Key clues">${clues.slice(0, 4).map(c => `<span class="clue ${c.strength}" title="${esc(c.kind)}: ${esc(c.text)} (${c.strength})">${esc(c.text)}</span>`).join('')}</div>
       <details class="more"><summary>Details</summary>
-        <ul class="clue-list">${strong.map(c => `<li><b>${esc(c.kind)}</b> ${esc(c.text)} <span class="method">(${c.strength}${c.photo ? `, photo ${c.photo}` : ''})</span></li>`).join('')}</ul>
+        <ul class="clue-list">${clues.map(c => `<li><b>${esc(c.kind)}</b> ${esc(c.text)} <span class="method">(${c.strength}${c.photo ? `, photo ${c.photo}` : ''})</span></li>`).join('')}</ul>
         ${e.areas.map((a, i) => `<p class="method">${i + 1}. within ${km(a.radius_km)} of ${esc(Geo.format(a.lon, a.lat, 'dd'))} (${esc(a.level)})</p>`).join('')}
         ${rest > 0.03 ? `<p class="method">Remaining ${pct(rest)}: somewhere else.</p>` : ''}
         ${e.caveats ? `<p class="method">${esc(e.caveats)}</p>` : ''}
-        <p class="method">${esc(e.model)} · ${e.rounds} rounds · ${ctx.tokens ? esc(ctx.tokens) + ' · ' : ''}≈ $${e.cost_usd.toFixed(3)}. AI estimate: confidence is Claude’s own judgement and can be wrong.</p>
+        <p class="method">${esc(e.model)}${ctx.tokens ? ' · ' + esc(ctx.tokens) : ''}${e.cost_usd ? ` · ≈ $${e.cost_usd.toFixed(3)}` : ''}. AI estimate: confidence is the model’s own judgement and can be wrong.</p>
       </details>
-      <div class="actions"><button class="btn" type="button" data-retry>${icon('retry', 'icon sm')}Try Again</button><button class="btn" type="button" data-switch>Ask ${locModel === 'sonnet' ? 'Haiku' : 'Sonnet'}</button>
+      <p class="hint">Know more? Add a clue or another photo below to narrow it down.</p>
+      <div class="actions"><button class="btn" type="button" data-again>${icon('retry', 'icon sm')}Look Again</button>
         <span class="feedback"><button class="btn-icon fb" aria-label="Right" aria-pressed="false">${icon('thumbup', 'icon sm')}</button><button class="btn-icon fb" aria-label="Wrong" aria-pressed="false">${icon('thumbdown', 'icon sm')}</button><span class="fb-note" role="status"></span></span></div>`;
     ctx.bot.appendChild(card);
+    const follow = text => live ? ask(text) : toast('Follow-up clues need geoask serve with a model.');
     card.querySelectorAll('.area').forEach(li => {
       const a = e.areas[+li.dataset.i];
       li.querySelector('.area-main').onclick = () => { card.querySelectorAll('.area').forEach(x => x.classList.toggle('sel', x === li)); fitAreas([a]); };
-      li.querySelector('[data-not]').onclick = () => runLocate(`It is not in ${a.label} (around ${a.lat.toFixed(3)}, ${a.lon.toFixed(3)})`);
+      li.querySelector('[data-not]').onclick = () => follow(`It's not in ${a.label}. Reconsider.`);
     });
-    card.querySelector('[data-retry]').onclick = () => runLocate();
-    card.querySelector('[data-switch]').onclick = () => { document.querySelector(`[data-model="${locModel === 'sonnet' ? 'haiku' : 'sonnet'}"]`).click(); runLocate(); };
+    card.querySelector('[data-again]').onclick = () => follow('Look at the photos again and reconsider your estimate.');
     card.querySelectorAll('.fb').forEach(b => b.onclick = () => { card.querySelectorAll('.fb').forEach(x => x.setAttribute('aria-pressed', x === b)); card.querySelector('.fb-note').textContent = 'Thanks'; });
   }
-  try { if (localStorage.getItem('geoask.tab') === 'locate') setTab('locate'); } catch { /* ignore */ }
+
+  // Generative enhancement: before/after with a draggable divider; always labelled as generated.
+  function showEnhanced(ctx, r, base) {
+    finishSteps(ctx);
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = `<div class="kicker warn">${icon('sparkle', 'icon sm')}AI-generated detail · not evidence</div>
+      <h3>Enhanced photo ${r.photo ? r.photo : ''}</h3>
+      <div class="when">${esc(r.model)} · ×${r.scale}${r.guidance ? ` · “${esc(r.guidance)}”` : ''}</div>
+      <div class="cmp" style="--x:50%"><img src="${base + r.images.after}" alt="Enhanced (generated)"><img class="top" src="${base + r.images.before}" alt="Original, upscaled"><span class="tag l">Original</span><span class="tag r">Generated</span>
+        <input type="range" min="0" max="100" value="50" aria-label="Compare original and generated"></div>
+      <div class="actions"><a class="btn" href="${base + r.images.after}" download>Download</a></div>
+      <p class="method">The model invents plausible detail. Don’t treat text, faces or plates in it as real.</p>`;
+    ctx.bot.appendChild(card);
+    const cmp = card.querySelector('.cmp');
+    cmp.querySelector('input').oninput = e => cmp.style.setProperty('--x', `${e.target.value}%`);
+  }
+
+  // ---------- Settings: model provider, keys, local models, offline models, privacy ----------
+  const dlg = $('#settings'), sbody = $('#settings-body');
+  function setModelChip(info) {
+    modelInfo = info;
+    $('#model-name').textContent = info ? info.label : 'Demo (recorded runs)';
+    $('#model-chip').classList.toggle('off', !info || info.kind === 'none');
+    $('#disclosure span').textContent = !info ? 'Demo: these answers are recorded runs. Run geoask serve to ask your own.'
+      : info.kind === 'none' ? 'No model connected: simple questions use fixed rules. Connect a model in Settings for chat and photo geolocation.'
+      : `${info.label} chooses the tools; every number is measured from satellite and elevation data and checked. Photos are sent without their metadata.`;
+  }
+  async function openSettings() {
+    if (!live) { toast('Settings need geoask serve running on your computer.'); return; }
+    dlg.showModal(); await renderSettings();
+  }
+  $('#btn-settings').onclick = openSettings;
+  $('#model-chip').onclick = openSettings;
+  $('#settings-close').onclick = () => dlg.close();
+  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+  const post = (url, body, method = 'POST') => fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  async function streamLines(res, onEv) {
+    const reader = res.body.getReader(), dec = new TextDecoder(); let buf = '';
+    for (;;) { const { value, done } = await reader.read(); if (done) break; buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i); buf = buf.slice(i + 1); if (l.trim()) onEv(JSON.parse(l)); } }
+  }
+  // Two-step download button: first click shows the size and asks to confirm (HIG › Responsibility).
+  function confirmButton(btn, label, run) {
+    btn.onclick = async () => {
+      if (btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = label; btn.classList.add('primary'); return; }
+      btn.disabled = true; await run();
+    };
+  }
+  async function renderSettings() {
+    const st = await (await fetch('/api/settings')).json();
+    const s = st.settings, act = st.active;
+    const prov = s.provider === 'auto' ? act.kind : s.provider;
+    const provs = [['anthropic', 'Claude API', 'Best results · needs an API key'], ['ollama', 'Ollama', 'Free · runs on this computer'],
+      ['openai', 'OpenAI-compatible', 'LM Studio, llama.cpp, vLLM…'], ['none', 'No model', 'Fixed rules · offline']];
+    sbody.innerHTML = `
+      <section><h3>Model</h3>
+        <p class="method">In use: <b>${esc(act.label)}</b>${act.kind !== 'none' && !act.vision ? ' · can’t see photos' : ''}${act.kind !== 'none' && !act.tools ? ' · can’t use tools' : ''}</p>
+        <div class="prov" role="radiogroup" aria-label="Model provider">${provs.map(([id, t, d]) => `<button type="button" role="radio" aria-checked="${prov === id}" data-prov="${id}"><b>${t}</b><span>${d}</span></button>`).join('')}</div>
+        <div id="prov-detail"></div></section>
+      <section><h3>Privacy</h3>
+        <label class="switch"><input type="checkbox" id="set-meta" ${s.share_photo_details ? 'checked' : ''}><span>Share photo details (camera GPS and time) with the model</span></label>
+        <p class="method">Photos are always sent with their metadata removed. This switch sends the details as text, which can make locating much easier.</p></section>
+      <section><h3>Offline models for tools</h3><ul class="offline">${st.offline.map(m => `<li>
+        <div><b>${esc(m.title)}</b><span class="method">${m.size_mb ? (m.size_mb >= 1000 ? `${(m.size_mb / 1000).toFixed(1)} GB` : `${m.size_mb} MB`) : 'size checked on download'} · ${esc(m.licence)}</span></div>
+        ${m.installed ? `<span class="ok">${icon('check', 'icon sm')}Installed</span>` : m.manual ? `<code>${esc(m.manual)}</code>` : `<button class="btn sm" type="button" data-fetch="${m.id}" data-size="${m.size_mb || ''}">Download</button>`}
+        <p class="dl-msg method" data-msg="${m.id}"></p></li>`).join('')}</ul></section>`;
+    sbody.querySelectorAll('[data-prov]').forEach(b => b.onclick = async () => { await post('/api/settings', { provider: b.dataset.prov }); await refreshModel(); renderSettings(); });
+    sbody.querySelector('#set-meta').onchange = e => post('/api/settings', { share_photo_details: e.target.checked });
+    sbody.querySelectorAll('[data-fetch]').forEach(btn => {
+      const id = btn.dataset.fetch;
+      confirmButton(btn, btn.dataset.size ? `Download ${+btn.dataset.size >= 1000 ? (btn.dataset.size / 1000).toFixed(1) + ' GB' : btn.dataset.size + ' MB'}?` : 'Check size and download?', async () => {
+        const msg = sbody.querySelector(`[data-msg="${id}"]`);
+        if (id === 'sd-x4-upscaler' && !btn.dataset.sized) {
+          msg.textContent = 'Checking size…';
+          const z = await (await fetch('/api/models/size?id=' + id)).json();
+          btn.dataset.sized = '1'; btn.dataset.armed = '1'; btn.disabled = false; btn.textContent = `Download ${(z.size_mb / 1000).toFixed(1)} GB?`; msg.textContent = 'Needs the enhance extra: uv pip install -e ".[enhance]"'; return;
+        }
+        await streamLines(await post('/api/models/fetch', { id }), ev => { msg.textContent = ev.text || ev.message || (ev.type === 'done' ? 'Installed' : ''); });
+        renderSettings();
+      });
+    });
+    renderProvider(prov, st);
+  }
+  function renderProvider(prov, st) {
+    const d = sbody.querySelector('#prov-detail'), s = st.settings;
+    if (prov === 'anthropic') {
+      const models = [['claude-sonnet-5-5', 'Claude Sonnet 5.5', 'balanced · ≈ $0.02–0.20 a question'], ['claude-opus-5-5', 'Claude Opus 5.5', 'most capable · about 2× Sonnet'], ['claude-haiku-5-5', 'Claude Haiku 5.5', 'fastest · cheapest']];
+      d.innerHTML = `<div class="field"><label>API key</label>${st.keys.anthropic
+        ? `<div class="row"><code>${esc(st.keys.anthropic)}</code> saved on this computer <button class="link" type="button" data-rm>Remove</button></div>`
+        : `<form class="key-form" autocomplete="off"><input id="key-in" type="password" spellcheck="false" placeholder="Paste key: sk-ant-…" aria-label="Anthropic API key"><button class="btn primary" type="submit">Connect</button></form><p class="key-msg" role="status"></p><p class="method">Checked with Anthropic, saved only on this computer, never shown again. <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get a key</a></p>`}</div>
+        <div class="field"><label>Model</label><div class="opts">${models.map(([id, t, n]) => `<label class="opt"><input type="radio" name="cm" value="${id}" ${s.anthropic.model === id ? 'checked' : ''}><span>${t}<span class="d">${n}</span></span></label>`).join('')}</div></div>`;
+      d.querySelectorAll('input[name=cm]').forEach(r => r.onchange = async () => { await post('/api/settings', { anthropic: { model: r.value } }); refreshModel(); });
+      d.querySelector('[data-rm]')?.addEventListener('click', async () => { await post('/api/settings/key?provider=anthropic', null, 'DELETE'); await refreshModel(); renderSettings(); });
+      const f = d.querySelector('.key-form');
+      if (f) {
+        const input = f.querySelector('input'), msg = d.querySelector('.key-msg');
+        const go = async () => {
+          msg.className = 'key-msg'; msg.textContent = 'Checking the key with Anthropic…';
+          const r = await post('/api/settings/key', { provider: 'anthropic', key: input.value });
+          const j = await r.json();
+          if (!r.ok) { msg.className = 'key-msg err'; msg.textContent = j.detail; input.select(); return; }
+          await refreshModel(); renderSettings(); toast(`Claude connected (${j.key}).`);
+        };
+        f.onsubmit = e => { e.preventDefault(); go(); };
+        input.addEventListener('paste', () => setTimeout(() => /sk-ant-/.test(input.value) && go(), 0));  // paste = connect
+        input.focus();
+      }
+    } else if (prov === 'ollama') {
+      const o = st.ollama, cur = s.ollama.model || (st.active.kind === 'ollama' ? st.active.model : '');
+      const have = new Set(o.models.map(m => m.name));
+      d.innerHTML = `<div class="field"><label for="oh">Ollama address</label><div class="row"><input id="oh" class="text" value="${esc(s.ollama.host)}"><span class="${o.running ? 'ok' : 'warn'}">${o.running ? 'Running' : 'Not running'}</span></div>
+        ${o.running ? '' : '<p class="method">Install Ollama from ollama.com and start it, then reopen Settings.</p>'}</div>
+        ${o.models.length ? `<div class="field"><label>Installed models</label><div class="opts">${o.models.map(m => `<label class="opt"><input type="radio" name="om" value="${esc(m.name)}" ${cur === m.name ? 'checked' : ''}><span>${esc(m.name)}<span class="d">${m.size_gb} GB · ${m.capabilities.includes('vision') ? 'sees photos' : 'no vision'} · ${m.capabilities.includes('tools') ? 'uses tools' : 'no tools'}</span></span></label>`).join('')}</div></div>` : ''}
+        ${o.running ? `<div class="field"><label>Download a model</label><ul class="offline">${st.recommended.filter(r => !have.has(r.name)).map(r => `<li><div><b>${esc(r.name)}</b><span class="method">${r.size_gb} GB · ${esc(r.note)}</span></div><button class="btn sm" type="button" data-pull="${esc(r.name)}">Download</button><p class="dl-msg method" data-pmsg="${esc(r.name)}"></p></li>`).join('')}</ul></div>` : ''}`;
+      d.querySelector('#oh').onchange = async e => { await post('/api/settings', { ollama: { host: e.target.value } }); renderSettings(); };
+      d.querySelectorAll('input[name=om]').forEach(r => r.onchange = async () => { await post('/api/settings', { provider: 'ollama', ollama: { model: r.value } }); refreshModel(); });
+      d.querySelectorAll('[data-pull]').forEach(btn => {
+        const r = st.recommended.find(x => x.name === btn.dataset.pull);
+        confirmButton(btn, `Download ${r.size_gb} GB?`, async () => {
+          const msg = d.querySelector(`[data-pmsg="${CSS.escape(r.name)}"]`);
+          await streamLines(await post('/api/ollama/pull', { model: r.name }), ev => { msg.textContent = ev.text || ev.message || (ev.type === 'done' ? 'Installed' : ''); });
+          await post('/api/settings', { provider: 'ollama', ollama: { model: r.name } }); await refreshModel(); renderSettings();
+        });
+      });
+    } else if (prov === 'openai') {
+      const o = s.openai;
+      d.innerHTML = `<div class="field"><label for="ob">Server address</label><input id="ob" class="text" value="${esc(o.base_url)}" placeholder="http://localhost:1234/v1"></div>
+        <div class="field"><label for="omn">Model name</label><input id="omn" class="text" value="${esc(o.model)}" placeholder="e.g. qwen2.5-vl-7b-instruct"></div>
+        <label class="switch"><input type="checkbox" id="ov" ${o.vision ? 'checked' : ''}><span>This model can see images</span></label>
+        <div class="field"><label for="ok">API key (if the server needs one)</label><div class="row">${st.keys.openai ? `<code>${esc(st.keys.openai)}</code> <button class="link" type="button" data-rmo>Remove</button>` : '<input id="ok" class="text" type="password" placeholder="optional">'}</div></div>
+        <div class="actions"><button class="btn primary" type="button" id="osave">Save</button></div>
+        <p class="method">For non-Claude models served with an OpenAI-style API (LM Studio, llama.cpp server, vLLM, OpenRouter…).</p>`;
+      d.querySelector('#osave').onclick = async () => {
+        await post('/api/settings', { provider: 'openai', openai: { base_url: d.querySelector('#ob').value, model: d.querySelector('#omn').value, vision: d.querySelector('#ov').checked } });
+        const k = d.querySelector('#ok')?.value; if (k) await post('/api/settings/key', { provider: 'openai', key: k });
+        await refreshModel(); renderSettings(); toast('Saved.');
+      };
+      d.querySelector('[data-rmo]')?.addEventListener('click', async () => { await post('/api/settings/key?provider=openai', null, 'DELETE'); renderSettings(); });
+    } else {
+      d.innerHTML = '<p class="method">Simple questions about change, vessels, terrain, viewshed and sharpening use fixed rules. Chat follow-ups and photo geolocation need a model.</p>';
+    }
+  }
+  async function refreshModel() {
+    try { const h = await (await fetch('/api/health')).json(); setModelChip(h.model); } catch { /* offline */ }
+    if (!log.querySelector('.msg-user')) renderEmpty();
+  }
+
+  // ---------- tools menu: run one tool directly (no model) ----------
+  const tpop = $('#tools-pop'), tbtn = $('#btn-tools');
+  const setTools = open => { tpop.hidden = !open; tbtn.setAttribute('aria-expanded', open); tbtn.setAttribute('aria-pressed', open); if (open) tpop.querySelector('button')?.focus(); };
+  tbtn.onclick = () => setTools(tpop.hidden);
+  document.addEventListener('pointerdown', e => { if (!tpop.hidden && !tpop.contains(e.target) && !tbtn.contains(e.target)) setTools(false); });
+  tpop.addEventListener('keydown', e => {
+    const items = [...tpop.querySelectorAll('button')], i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    if (e.key === 'Escape') { setTools(false); tbtn.focus(); }
+  });
+  let pendingArea = null, pendingPoint = false;
+  const TOOL_LABEL = { measure_change: t => t === 'any' ? 'Any change in the selected area' : 'Vegetation change in the selected area', vessel_activity: () => 'Vessel activity in the selected area', terrain: () => 'Terrain of the selected area', sharpen_image: () => 'Sharpen the selected area' };
+  tpop.querySelectorAll('.tool-item').forEach(b => b.onclick = () => {
+    setTools(false);
+    const tool = b.dataset.tool, topic = b.dataset.topic;
+    if (tool === 'los') { if (!measuring) setMeasuring(true); toast('Click two points, then Line of Sight.'); return; }
+    if (!live) { toast('Tools run with geoask serve on your computer. This demo replays recorded runs.'); return; }
+    if (tool === 'enhance') { startEnhance(); return; }
+    if (tool === 'viewshed') { pendingPoint = true; document.body.classList.add('picking'); toast('Click the map to place the observer.'); return; }
+    const job = { tool, args: topic ? { topic } : {}, label: TOOL_LABEL[tool](topic) };
+    if (selection) runDirect(job); else { pendingArea = job; setDrawing(true); toast('Draw an area for this tool.'); }
+  });
+  map.on('click', e => {
+    if (!pendingPoint) return;
+    pendingPoint = false; document.body.classList.remove('picking');
+    runDirect({ tool: 'viewshed', args: { lat: e.lngLat.lat, lon: e.lngLat.lng, radius_km: 5, observer_height_m: 2 }, label: `Viewshed from ${Geo.toMGRS(e.lngLat.lng, e.lngLat.lat, 4)}` });
+  });
+  async function runDirect(job) {
+    setCollapsed(false);
+    const ctx = newTurn(job.label); ctx.bot.previousElementSibling.classList.add('tool-msg');
+    busy = true;
+    try { await streamInto(await post('/api/run', { tool: job.tool, args: job.args, bbox: selection }), ctx); }
+    catch (err) { showError(ctx, err.message, 'Check that geoask serve is running.'); }
+    finally { busy = false; finishSteps(ctx); send.disabled = !canSend(); }
+  }
+  function startEnhance() {
+    const go = async file => {
+      setCollapsed(false);
+      const guidance = askBox.value.trim();
+      const ctx = newTurn(`Enhance photo${guidance ? `: “${guidance}”` : ''}`, [{ file, url: URL.createObjectURL(file) }]);
+      ctx.bot.previousElementSibling.classList.add('tool-msg');
+      askBox.value = ''; askBox.dispatchEvent(new Event('input'));
+      const fd = new FormData(); fd.append('file', file, file.name); fd.append('guidance', guidance);
+      try { await streamInto(await fetch('/api/enhance', { method: 'POST', body: fd }), ctx); }
+      catch (err) { showError(ctx, err.message, 'Check that geoask serve is running.'); }
+      finally { finishSteps(ctx); }
+    };
+    if (atts.length) { const a = atts.shift(); renderAtts(); go(a.file); return; }
+    const once = () => { fileIn.removeEventListener('change', once, true); const f = fileIn.files[0]; fileIn.value = ''; if (f) go(f); };
+    fileIn.addEventListener('change', once, { capture: true, once: true });
+    toast('Choose a photo. Type a description first to guide the result.');
+    fileIn.click();
+  }
+
+  // Demo mode: replay a recorded live geolocation run (scripts/record_locate.py), event by event.
+  async function replayLocate(ctx) {
+    const base = '../gallery/locate/';
+    const run = await (await fetch(base + 'run.json')).json();
+    if (!ctx) {
+      const blob = await (await fetch(base + run.photo)).blob();
+      ctx = newTurn('Where was this photo taken?', [{ file: new File([blob], 'sample-street.jpg'), url: base + run.photo }]);
+    }
+    ensureTrace(ctx);
+    addStep(ctx, 'Read 1 photo on this computer (metadata stays here)');
+    let last = 0;
+    for (const ev of run.events) {
+      await sleep(Math.min(1400, Math.max(250, (ev.t - last) * 120)));
+      last = ev.t;
+      ctx.t0 = performance.now() - ev.t * 1000;  // the trace shows the recorded run's timing
+      handle(ev, ctx);
+    }
+    showAnswer(ctx, `Recorded run with ${run.model} on a photo by ${run.credit.replace(/^Photo: /, '')}. Run GeoAsk yourself to locate your own photos.`, 'recorded run');
+  }
 
   // ---------- demo mode (GitHub Pages: no server) ----------
   const sleep = ms => new Promise(r => setTimeout(r, reduceMotion ? 0 : ms));
@@ -1178,15 +1298,13 @@
       const h = await fetch('/api/health', { signal: ctrl.signal });
       if (!h.ok) throw 0;
       setMode(true);
-      const hj = await h.json();
-      if (hj.llm) $('#disclosure span').textContent = `Questions are read by ${hj.llm}, running on this computer. Every number is measured from satellite and elevation data and checked before it’s shown.`;
+      setModelChip((await h.json()).model);
       try { TOOLS = await (await fetch('/api/tools')).json(); } catch { /* keep the built-in list */ }
-      if (!$('#pane-locate').hidden) setTab('locate');  // live is known now: check the Claude key
       if (!log.querySelector('.msg-user')) renderEmpty();
       const ps = await (await fetch('/api/places')).json();
       places = Object.fromEntries(ps.filter(p => p.name !== 'singapore').map(p => [p.name, p.bbox]));
       map.getSource('areas')?.setData(areasGeoJSON());
-    } catch { setMode(false); }
+    } catch { setMode(false); setModelChip(null); }
   })();
   renderEmpty();
 
@@ -1196,6 +1314,8 @@
     if (e.key === '/' && !typing) { e.preventDefault(); q.focus(); }
     if (e.key === '\\' && !typing) { e.preventDefault(); panelBtn.click(); }
     if (e.key === 'Escape' && !lp.hidden) { setLayers(false); lb.focus(); }
+    if (e.key === 'Escape' && pendingPoint) { pendingPoint = false; document.body.classList.remove('picking'); }
+    if (e.key === ',' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openSettings(); }
     if (e.key === 'Escape' && drawing) { setDrawing(false); $('#btn-draw').focus(); }
     if (e.key === 'Escape' && measuring) { setMeasuring(false); $('#btn-measure').focus(); }
   });

@@ -1,9 +1,9 @@
-"""Record one real Locate run for the Pages demo (web/gallery/locate/).
+"""Record one real geolocation run for the Pages demo (web/gallery/locate/).
 
-Runs the actual Claude agent (needs ANTHROPIC_API_KEY; costs one run) on an openly licensed photo
-and saves the photo, its credit and every event, so Demo mode replays exactly what happened.
+Runs the chat agent with the model chosen in Settings (or --model claude-…) on an openly licensed
+photo and saves the photo, its credit and every event, so Demo mode replays exactly what happened.
 
-    python scripts/record_locate.py PHOTO_URL "credit line" [--model sonnet|haiku]
+    python scripts/record_locate.py PHOTO_URL "credit line" [--model claude-sonnet-5-5]
 """
 
 from __future__ import annotations
@@ -14,7 +14,10 @@ import time
 import urllib.request
 from pathlib import Path
 
-from geoask.geolocate import agent, images
+from geoask import settings
+from geoask.agent import chat
+from geoask.agent.providers import AnthropicProvider
+from geoask.geolocate import images
 from geoask.geolocate.sources import UA
 
 OUT = Path(__file__).resolve().parents[1] / "web" / "gallery" / "locate"
@@ -22,7 +25,10 @@ OUT = Path(__file__).resolve().parents[1] / "web" / "gallery" / "locate"
 
 def main() -> None:
     url, credit = sys.argv[1], sys.argv[2]
-    model = sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv else "sonnet"
+    model = sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv else None
+    provider = AnthropicProvider(model) if model else settings.resolve_provider()
+    if provider is None:
+        sys.exit("No model configured: open Settings in the app, or pass --model claude-sonnet-5-5")
     with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=30) as r:
         data = r.read()
     photo = images.load(data, 1, "photo.jpg")
@@ -34,7 +40,9 @@ def main() -> None:
         events.append({"t": round(time.time() - t0, 2), **ev})
         print(ev.get("type"), (ev.get("text") or "")[:90])
 
-    est = agent.locate([photo], emit, model=model, share_meta=False)
+    chat.run_turn(provider, None, "Where was this photo taken?", [photo], None,
+                  Path.home() / ".cache" / "geoask" / "results", emit, share_meta=False)
+    est = next(e["estimate"] for e in reversed(events) if e["type"] == "estimate")
     import base64
 
     (OUT / "photo.jpg").write_bytes(base64.b64decode(photo.jpeg_b64))
